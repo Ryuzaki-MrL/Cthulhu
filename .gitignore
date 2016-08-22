@@ -1,0 +1,7 @@
+# 3DS Stuff
+build
+*.bat
+*.3dsx
+*.cia
+*.smdh
+*.elf
