@@ -169,7 +169,7 @@ ENTRY_DATA* getSharedEntryList(Handle* source) {
     for (u64 i = 0; i < ENTRY_SHARED_COUNT; i++) {
         u32 rsize = 0;
         res = FSFILE_Read(*source, &rsize, i*sizeof(ENTRY_DATA), &data[i], sizeof(ENTRY_DATA));
-        printf("\x1b[15;0HReading entry data %llu... %s %lx.", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("\x1b[15;0HReading entry data %llu... %s %lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
         if(R_FAILED(res) || rsize < sizeof(ENTRY_DATA)) break;
         gfxEndFrame();
     }
@@ -370,14 +370,17 @@ void updateSharedIconCache(bool wait = true) {
     bool success = false;
 
     if (dobackup) {
-        FILE* backup = fopen("/3ds/cachetool/shared.bak", "wb");
+        FILE* backup1 = fopen("/3ds/cachetool/idb.bak", "wb");
+        FILE* backup2 = fopen("/3ds/cachetool/idbt.bak", "wb");
         printf("Backing up icon data... ");
         gfxEndFrame();
 
-        u32 fsize = sizeof(SMDH_SHARED)*ENTRY_SHARED_COUNT;
-        success = (fwrite(icons, 1, fsize, backup)==fsize);
+        u32 fsize1 = sizeof(SMDH_SHARED)*ENTRY_SHARED_COUNT;
+        u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_SHARED_COUNT;
+        success = ((fwrite(icons, 1, fsize1, backup1)==fsize1) && (fwrite(entries, 1, fsize2, backup2)==fsize2));
         printf("%s.\n", success ? "OK" : "ERROR");
-        fclose(backup);
+        fclose(backup1);
+        fclose(backup2);
     } else {
         printf("Skipping icon data backup.\n");
         success = true;
@@ -419,28 +422,41 @@ void updateSharedIconCache(bool wait = true) {
 void restoreSharedIconCache() {
     Result res;
     Handle idb;
+    Handle idbt;
     FS_Archive shared = openSharedExtdata();
 
-    FILE* backup = fopen("/3ds/cachetool/shared.bak", "rb");
-    if (backup==NULL) promptError("Restore Shared Icon Cache", "No usable backup found.");
+    FILE* backup1 = fopen("/3ds/cachetool/idb.bak", "wb");
+    FILE* backup2 = fopen("/3ds/cachetool/idbt.bak", "wb");
+    if (backup1==NULL || backup2==NULL) promptError("Restore Shared Icon Cache", "No usable backup found.");
     else {
         res = FSUSER_OpenFile(&idb, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idb.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
         printf("Opening file \"idb.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        res = FSUSER_OpenFile(&idbt, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idbt.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
+        printf("Opening file \"idbt.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
-        u32 fsize = sizeof(SMDH_SHARED)*ENTRY_SHARED_COUNT;
-        u8* buffer = (u8*)malloc(fsize);
-        u32 wsize = 0;
+        u32 fsize1 = sizeof(SMDH_SHARED)*ENTRY_SHARED_COUNT;
+        u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_SHARED_COUNT;
+        u8* buffer1 = (u8*)malloc(fsize1);
+        u8* buffer2 = (u8*)malloc(fsize2);
+        u32 wsize1 = 0;
+        u32 wsize2 = 0;
 
-        fread(buffer, 1, fsize, backup);
+        fread(buffer1, 1, fsize1, backup1);
+        fread(buffer2, 1, fsize2, backup2);
         printf("Restoring backup to \"idb.dat\"... ");
-        res = FSFILE_Write(idb, &wsize, 0x0, buffer, fsize, 0);
+        res = FSFILE_Write(idb, &wsize1, 0x0, buffer1, fsize1, 0);
         printf("%s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
-        if(R_FAILED(res) || wsize < fsize) promptError("Restore Shared Icon Cache", "Failed to restore backup.");
+        res = FSFILE_Write(idbt, &wsize2, 0x0, buffer2, fsize2, 0);
+        printf("%s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        if(R_FAILED(res) || wsize1 < fsize1 || wsize2 < fsize2) promptError("Restore Shared Icon Cache", "Failed to restore backup.");
         else promptError("Restore Shared Icon Cache", "Successfully restored backup.");
 
-        free(buffer);
-        fclose(backup);
+        free(buffer1);
+        free(buffer2);
+        fclose(backup1);
+        fclose(backup2);
         FSFILE_Close(idb);
+        FSFILE_Close(idbt);
     }
 }
 
@@ -485,14 +501,17 @@ void updateHomemenuIconCache(bool wait = true) {
     bool success = false;
 
     if (dobackup) {
-        FILE* backup = fopen("/3ds/cachetool/homemenu.bak", "wb");
+        FILE* backup1 = fopen("/3ds/cachetool/CacheD.bak", "wb");
+        FILE* backup2 = fopen("/3ds/cachetool/Cache.bak", "wb");
         printf("Backing up icon data... ");
         gfxEndFrame();
 
-        u32 fsize = sizeof(SMDH_HOMEMENU)*ENTRY_HOMEMENU_COUNT;
-        success = (fwrite(icons, 1, fsize, backup)==fsize);
+        u32 fsize1 = sizeof(SMDH_HOMEMENU)*ENTRY_HOMEMENU_COUNT;
+        u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_HOMEMENU_COUNT;
+        success = ((fwrite(icons, 1, fsize1, backup1)==fsize1) && (fwrite(entries, 1, fsize2, backup2)==fsize2));
         printf("%s.\n", success ? "OK" : "ERROR");
-        fclose(backup);
+        fclose(backup1);
+        fclose(backup2);
     } else {
         printf("Skipping icon data backup.\n");
         success = true;
@@ -532,28 +551,42 @@ void updateHomemenuIconCache(bool wait = true) {
 void restoreHomemenuIconCache() {
     Result res;
     Handle cached;
+    Handle cache;
     FS_Archive hmextdata = openHomemenuExtdata();
 
-    FILE* backup = fopen("/3ds/cachetool/homemenu.bak", "rb");
-    if (backup==NULL) promptError("Restore HOME Menu Icon Cache", "No usable backup found.");
+    FILE* backup1 = fopen("/3ds/cachetool/CacheD.bak", "rb");
+    FILE* backup2 = fopen("/3ds/cachetool/Cache.bak", "rb");
+    if (backup1==NULL || backup2==NULL) promptError("Restore HOME Menu Icon Cache", "No usable backup found.");
     else {
         res = FSUSER_OpenFile(&cached, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/CacheD.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
         printf("Opening file \"CacheD.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        res = FSUSER_OpenFile(&cache, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/Cache.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
+        printf("Opening file \"Cache.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
-        u32 fsize = sizeof(SMDH_HOMEMENU)*ENTRY_HOMEMENU_COUNT;
-        u8* buffer = (u8*)malloc(fsize);
-        u32 wsize = 0;
+        u32 fsize1 = sizeof(SMDH_HOMEMENU)*ENTRY_HOMEMENU_COUNT;
+        u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_HOMEMENU_COUNT;
+        u8* buffer1 = (u8*)malloc(fsize1);
+        u8* buffer2 = (u8*)malloc(fsize2);
+        u32 wsize1 = 0;
+        u32 wsize2 = 0;
 
-        fread(buffer, 1, fsize, backup);
+        fread(buffer1, 1, fsize1, backup1);
+        fread(buffer2, 1, fsize2, backup2);
         printf("Restoring backup to \"CacheD.dat\"... ");
-        res = FSFILE_Write(cached, &wsize, 0x0, buffer, fsize, 0);
+        res = FSFILE_Write(cached, &wsize1, 0x0, buffer1, fsize1, 0);
         printf("%s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
-        if(R_FAILED(res) || wsize < fsize) promptError("Restore HOME Menu Icon Cache", "Failed to restore backup.");
+        printf("Restoring backup to \"Cache.dat\"... ");
+        res = FSFILE_Write(cache, &wsize2, 0x0, buffer2, fsize2, 0);
+        printf("%s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        if(R_FAILED(res) || wsize1 < fsize1 || wsize2 < fsize2) promptError("Restore HOME Menu Icon Cache", "Failed to restore backup.");
         else promptError("Restore HOME Menu Icon Cache", "Successfully restored backup.");
 
-        free(buffer);
-        fclose(backup);
+        free(buffer1);
+        free(buffer2);
+        fclose(backup1);
+        fclose(backup2);
         FSFILE_Close(cached);
+        FSFILE_Close(cache);
     }
 }
 
