@@ -8,7 +8,13 @@
 #define ENTRY_SHARED_COUNT 0x200
 #define ENTRY_HOMEMENU_COUNT 0x168
 
+#define SUBMENU_COUNT 7
+#define MAX_OPTIONS_PER_SUBMENU 10
+
 bool dobackup = true;
+
+Handle ptmSysmHandle;
+Handle amHandle;
 
 typedef struct {
     u16 shortDescription[0x40];
@@ -60,8 +66,6 @@ typedef struct {
     u64 titleid;
 } ENTRY_DATA;
 
-Handle ptmSysmHandle;
-
 Result PTMSYSM_FormatSavedata(void)
 {
 	Result ret;
@@ -94,6 +98,18 @@ Result PTMSYSM_ClearPlayHistory(void)
 	cmdbuf[0] = IPC_MakeHeader(0x80A,0,0); // 0x80A0000
 
 	if(R_FAILED(ret = svcSendSyncRequest(ptmSysmHandle)))return ret;
+
+	return (Result)cmdbuf[1];
+}
+
+Result AM_DeleteAllDemoLaunchInfos(void)
+{
+	Result ret;
+	u32 *cmdbuf = getThreadCommandBuffer();
+
+	cmdbuf[0] = IPC_MakeHeader(0x827,0,0); // 0x8270000
+
+	if(R_FAILED(ret = svcSendSyncRequest(amHandle)))return ret;
 
 	return (Result)cmdbuf[1];
 }
@@ -139,6 +155,8 @@ u64* getTitleList(u64* count) {
     Result res;
     u32 count1;
     u32 count2;
+
+    amInit();
     res = AM_GetTitleCount(MEDIATYPE_NAND, &count1);
     if(R_FAILED(res)) return NULL;
     res = AM_GetTitleCount(MEDIATYPE_SD, &count2);
@@ -147,9 +165,10 @@ u64* getTitleList(u64* count) {
     u64* tids = new u64[count1 + count2];
 
     res = AM_GetTitleList(&count1, MEDIATYPE_NAND, count1, tids);
-    printf("Retrieving NAND title list... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Retrieving NAND title list... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     res = AM_GetTitleList(&count2, MEDIATYPE_SD, count2, &tids[count1]);
-    printf("Retrieving SD title list... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Retrieving SD title list... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    amExit();
 
     *count = (((u64)count1)<<32 | (u64)count2);
     printf("Found %llu titles.\n", ((*count & 0xFFFFFFFF) + (*count >> 32)));
@@ -162,14 +181,14 @@ ENTRY_DATA* getSharedEntryList(Handle* source) {
     u64 filesize = 0;
 
     res = FSFILE_GetSize(*source, &filesize);
-    printf("Retrieving cache file size... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Retrieving cache file size... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     ENTRY_DATA* data = new ENTRY_DATA[ENTRY_SHARED_COUNT];
 
     for (u64 i = 0; i < ENTRY_SHARED_COUNT; i++) {
         u32 rsize = 0;
         res = FSFILE_Read(*source, &rsize, i*sizeof(ENTRY_DATA), &data[i], sizeof(ENTRY_DATA));
-        printf("\x1b[15;0HReading entry data %llu... %s %lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("\x1b[15;0HReading entry data %llu... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
         if(R_FAILED(res) || rsize < sizeof(ENTRY_DATA)) break;
         gfxEndFrame();
     }
@@ -182,14 +201,14 @@ SMDH_SHARED* getSharedIconList(Handle* source) {
     u64 filesize = 0;
 
     res = FSFILE_GetSize(*source, &filesize);
-    printf("Retrieving cache file size... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Retrieving cache file size... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     SMDH_SHARED* data = new SMDH_SHARED[ENTRY_SHARED_COUNT];
 
     for (u64 i = 0; i < ENTRY_SHARED_COUNT; i++) {
         u32 rsize = 0;
         res = FSFILE_Read(*source, &rsize, i*sizeof(SMDH_SHARED), &data[i], sizeof(SMDH_SHARED));
-        printf("\x1b[16;0HReading icon data %llu... %s %lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("\x1b[16;0HReading icon data %llu... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
         if(R_FAILED(res) || rsize < sizeof(SMDH_SHARED)) break;
         gfxEndFrame();
     }
@@ -202,14 +221,14 @@ ENTRY_DATA* getHomemenuEntryList(Handle* source) {
     u64 filesize = 0;
 
     res = FSFILE_GetSize(*source, &filesize);
-    printf("Retrieving cache file size... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Retrieving cache file size... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     ENTRY_DATA* data = new ENTRY_DATA[ENTRY_HOMEMENU_COUNT];
 
     for (u64 i = 0; i < ENTRY_HOMEMENU_COUNT; i++) {
         u32 rsize = 0;
         res = FSFILE_Read(*source, &rsize, i*sizeof(ENTRY_DATA), &data[i], sizeof(ENTRY_DATA));
-        printf("\x1b[15;0HReading entry data %llu... %s %lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("\x1b[15;0HReading entry data %llu... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
         if(R_FAILED(res) || rsize < sizeof(ENTRY_DATA)) break;
         gfxEndFrame();
     }
@@ -222,14 +241,14 @@ SMDH_HOMEMENU* getHomemenuIconList(Handle* source) {
     u64 filesize = 0;
 
     res = FSFILE_GetSize(*source, &filesize);
-    printf("Retrieving cache file size... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Retrieving cache file size... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     SMDH_HOMEMENU* data = new SMDH_HOMEMENU[ENTRY_HOMEMENU_COUNT];
 
     for (u64 i = 0; i < ENTRY_HOMEMENU_COUNT; i++) {
         u32 rsize = 0;
         res = FSFILE_Read(*source, &rsize, i*sizeof(SMDH_HOMEMENU), &data[i], sizeof(SMDH_HOMEMENU));
-        printf("\x1b[16;0HReading icon data %llu... %s %lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("\x1b[16;0HReading icon data %llu... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
         if(R_FAILED(res) || rsize < sizeof(SMDH_HOMEMENU)) break;
         gfxEndFrame();
     }
@@ -261,12 +280,12 @@ SMDH_HOMEMENU* getSystemIconList(u64* tids, u64 count) {
             const u32 filePathData[] = {0x00000000, 0x00000000, 0x00000002, 0x6E6F6369, 0x00000000};
 
             res = FSUSER_OpenFileDirectly(&smdhHandle, ARCHIVE_SAVEDATA_AND_CONTENT, (FS_Path){PATH_BINARY, 0x10, (u8*)archivePathData}, (FS_Path){PATH_BINARY, 0x14, (u8*)filePathData}, FS_OPEN_READ, 0);
-            printf("\x1b[18;0HOpening SMDH file %llx... %s %lx.", tids[i], R_FAILED(res) ? "ERROR" : "OK", res);
+            printf("\x1b[18;0HOpening SMDH file %llx... %s %#lx.", tids[i], R_FAILED(res) ? "ERROR" : "OK", res);
 
             if (R_SUCCEEDED(res)) {
                 u32 bytesRead = 0;
                 res = FSFILE_Read(smdhHandle, &bytesRead, 0x0, &icons[i], sizeof(SMDH_HOMEMENU));
-                printf("\x1b[19;0HReading SMDH %llx... %s %lx.", tids[i], R_FAILED(res) ? "ERROR" : "OK", res);
+                printf("\x1b[19;0HReading SMDH %llx... %s %#lx.", tids[i], R_FAILED(res) ? "ERROR" : "OK", res);
                 FSFILE_Close(smdhHandle);
                 if (bytesRead == sizeof(SMDH_HOMEMENU)) loaded++;
             }
@@ -280,41 +299,69 @@ SMDH_HOMEMENU* getSystemIconList(u64* tids, u64 count) {
     return icons;
 }
 
-FS_Archive openSharedExtdata() {
+FS_Archive openExtdata(u32* UniqueID, FS_ArchiveID archiveId) {
     Result res;
+    u8 region = 0;
+
+    res = CFGU_SecureInfoGetRegion(&region);
+    printf("Retrieving console's region... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
     FS_Archive archive;
-    u32 archpath[3] = {MEDIATYPE_NAND, 0xF000000B, 0x00048000};
+    FS_MediaType media = (archiveId==ARCHIVE_SHARED_EXTDATA) ? MEDIATYPE_NAND : MEDIATYPE_SD;
+    u32 low = ((archiveId==ARCHIVE_SHARED_EXTDATA) || (region > 2)) ? UniqueID[0] : UniqueID[region];
+    u32 high = (archiveId==ARCHIVE_SHARED_EXTDATA) ? 0x00048000 : 0x00000000;
+    u32 archpath[3] = {media, low, high};
     FS_Path fspath = {PATH_BINARY, 12, archpath};
 
-    res = FSUSER_OpenArchive(&archive, ARCHIVE_SHARED_EXTDATA, fspath);
-    printf("Opening shared extdata archive... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
-    
+    res = FSUSER_OpenArchive(&archive, archiveId, fspath);
+    printf("Opening archive %#lx... %s %#lx.\n", low, R_FAILED(res) ? "ERROR" : "OK", res);
+
     return archive;
 }
 
-FS_Archive openHomemenuExtdata() {
+FS_Archive openSystemSavedata(u32* UniqueID) {
     Result res;
     u8 region = 0;
-    u32 extpath[3] = {0x00000082, 0x0000008f, 0x00000098};
 
     res = CFGU_SecureInfoGetRegion(&region);
-    printf("Retrieving console's region... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Retrieving console's region... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     FS_Archive archive;
-    u32 archpath[3] = {MEDIATYPE_SD, (region > 2) ? 0x00000082 : extpath[region], 0x00000000};
-    FS_Path fspath = {PATH_BINARY, 12, archpath};
+    u32 low = (region > 2) ? UniqueID[0] : UniqueID[region];
+    u32 archpath[2] = {MEDIATYPE_NAND, low};
 
-    res = FSUSER_OpenArchive(&archive, ARCHIVE_EXTDATA, fspath);
-    printf("Opening homemenu extdata archive... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    FS_Path fspath = {PATH_BINARY, 8, archpath};
+
+    res = FSUSER_OpenArchive(&archive, ARCHIVE_SYSTEM_SAVEDATA, fspath);
+    printf("Opening archive %#lx... %s %#lx.\n", low, R_FAILED(res) ? "ERROR" : "OK", res);
 
     return archive;
 }
 
 void clearStepHistory(bool wait = true) {
     Result res = PTMSYSM_ClearStepHistory();
-    printf("Clearing step history... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     if (R_FAILED(res)) promptError("Clear Step History", "Failed to clear step history.");
-    else if (wait) {
+    printf("Clearing step history... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    if (wait) {
+        printf("Press any key to continue.\n");
+        waitKey();
+    }
+}
+
+void clearSoftwareLibrary(bool wait = true) {
+    Result res;
+
+    u32 activitylogID[3] = {0x00020202, 0x00020212, 0x00020222};
+    FS_Archive syssave = openSystemSavedata(activitylogID);
+
+    res = FSUSER_DeleteFile(syssave, (FS_Path)fsMakePath(PATH_ASCII, "/pld.dat"));
+    if (R_FAILED(res)) promptError("Clear Software Library", "Failed to software library data.");
+    printf("Deleting file \"pld.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    FSUSER_CloseArchive(syssave);
+
+    if (wait) {
         printf("Press any key to continue.\n");
         waitKey();
     }
@@ -322,9 +369,21 @@ void clearStepHistory(bool wait = true) {
 
 void clearPlayHistory(bool wait = true) {
     Result res = PTMSYSM_ClearPlayHistory();
-    printf("Clearing play history... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     if (R_FAILED(res)) promptError("Clear Step History", "Failed to clear play history.");
-    else if (wait) {
+    printf("Clearing play history... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    if (wait) {
+        printf("Press any key to continue.\n");
+        waitKey();
+    }
+}
+
+void resetDemoPlayCount(bool wait = true) {
+    Result res = AM_DeleteAllDemoLaunchInfos();
+    if (R_FAILED(res)) promptError("Reset Demo Play Count", "Failed to reset demo play count.");
+    printf("Reseting demo play count... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    if (wait) {
         printf("Press any key to continue.\n");
         waitKey();
     }
@@ -332,14 +391,15 @@ void clearPlayHistory(bool wait = true) {
 
 void clearSharedIconCache(bool wait = true) {
     Result res;
-    FS_Archive shared = openSharedExtdata();
+    u32 sharedID = 0xF000000B;
+    FS_Archive shared = openExtdata(&sharedID, ARCHIVE_SHARED_EXTDATA);
 
     res = FSUSER_DeleteFile(shared, (FS_Path)fsMakePath(PATH_ASCII, "/idb.dat"));
-    printf("Deleting file \"idb.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     if (R_FAILED(res)) promptError("Clear Shared Icon Cache", "Failed to delete cache file.");
+    printf("Deleting file \"idb.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     res = FSUSER_DeleteFile(shared, (FS_Path)fsMakePath(PATH_ASCII, "/idbt.dat"));
-    printf("Deleting file \"idbt.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     if (R_FAILED(res)) promptError("Clear Shared Icon Cache", "Failed to delete cache file.");
+    printf("Deleting file \"idbt.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     FSUSER_CloseArchive(shared);
 
@@ -349,16 +409,63 @@ void clearSharedIconCache(bool wait = true) {
     }
 }
 
-void updateSharedIconCache(bool wait = true) {
+bool backupSharedIconCache(bool wait = true) {
     Result res;
     Handle idb;
     Handle idbt;
-    FS_Archive shared = openSharedExtdata();
+    bool success = false;
+    u32 sharedID = 0xF000000B;
+    FS_Archive shared = openExtdata(&sharedID, ARCHIVE_SHARED_EXTDATA);
+
+    res = FSUSER_OpenFile(&idb, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idb.dat"), FS_OPEN_READ, 0);
+    printf("Opening file \"idb.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    res = FSUSER_OpenFile(&idbt, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idbt.dat"), FS_OPEN_READ, 0);
+    printf("Opening file \"idbt.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    FILE* backup1 = fopen("/3ds/cachetool/idb.bak", "wb");
+    FILE* backup2 = fopen("/3ds/cachetool/idbt.bak", "wb");
+    printf("Backing up icon data... ");
+    gfxEndFrame();
+
+    u32 fsize1 = sizeof(SMDH_SHARED)*ENTRY_SHARED_COUNT;
+    u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_SHARED_COUNT;
+    u8* buffer1 = (u8*)malloc(fsize1);
+    u8* buffer2 = (u8*)malloc(fsize2);
+
+    FSFILE_Read(idb, NULL, 0x0, buffer1, fsize1);
+    FSFILE_Read(idbt, NULL, 0x0, buffer2, fsize2);
+    FSFILE_Close(idb);
+    FSFILE_Close(idbt);
+
+    success = ((fwrite(buffer1, 1, fsize1, backup1)==fsize1) && (fwrite(buffer2, 1, fsize2, backup2)==fsize2));
+    printf("%s.\n", success ? "OK" : "ERROR");
+
+    if (!success) promptError("Backup Shared Icon Cache", "Couldn't backup icon data.");
+
+    free(buffer1);
+    free(buffer2);
+    fclose(backup1);
+    fclose(backup2);
+
+    if (wait) {
+        printf("Press any key to continue.\n");
+        waitKey();
+    }
+
+    return success;
+}
+
+void updateSharedIconCache() {
+    Result res;
+    Handle idb;
+    Handle idbt;
+    u32 sharedID = 0xF000000B;
+    FS_Archive shared = openExtdata(&sharedID, ARCHIVE_SHARED_EXTDATA);
 
     res = FSUSER_OpenFile(&idb, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idb.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
-    printf("Opening file \"idb.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Opening file \"idb.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     res = FSUSER_OpenFile(&idbt, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idbt.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
-    printf("Opening file \"idbt.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Opening file \"idbt.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     u64 titlecount = 0;
     u64* tids = getTitleList(&titlecount);
@@ -370,17 +477,7 @@ void updateSharedIconCache(bool wait = true) {
     bool success = false;
 
     if (dobackup) {
-        FILE* backup1 = fopen("/3ds/cachetool/idb.bak", "wb");
-        FILE* backup2 = fopen("/3ds/cachetool/idbt.bak", "wb");
-        printf("Backing up icon data... ");
-        gfxEndFrame();
-
-        u32 fsize1 = sizeof(SMDH_SHARED)*ENTRY_SHARED_COUNT;
-        u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_SHARED_COUNT;
-        success = ((fwrite(icons, 1, fsize1, backup1)==fsize1) && (fwrite(entries, 1, fsize2, backup2)==fsize2));
-        printf("%s.\n", success ? "OK" : "ERROR");
-        fclose(backup1);
-        fclose(backup2);
+        success = backupSharedIconCache(false);
     } else {
         printf("Skipping icon data backup.\n");
         success = true;
@@ -400,7 +497,7 @@ void updateSharedIconCache(bool wait = true) {
 
             u32 wsize = 0;
             res = FSFILE_Write(idb, &wsize, i*sizeof(SMDH_SHARED), &icons[i], sizeof(SMDH_SHARED), 0);
-            printf("\x1b[24;0HWriting entry %llu to file... %s %lx.", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+            printf("\x1b[24;0HWriting entry %llu to file... %s %#lx.", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
             gfxEndFrame();
         }
     }
@@ -413,26 +510,27 @@ void updateSharedIconCache(bool wait = true) {
     FSFILE_Close(idbt);
     FSUSER_CloseArchive(shared);
 
-    if (wait) {
-        printf("\nPress any key to continue.\n");
-        waitKey();
-    }
+    printf("Press any key to continue.\n");
+    waitKey();
 }
 
 void restoreSharedIconCache() {
     Result res;
     Handle idb;
     Handle idbt;
-    FS_Archive shared = openSharedExtdata();
+    u32 sharedID = 0xF000000B;
+    FS_Archive shared = openExtdata(&sharedID, ARCHIVE_SHARED_EXTDATA);
 
     FILE* backup1 = fopen("/3ds/cachetool/idb.bak", "wb");
     FILE* backup2 = fopen("/3ds/cachetool/idbt.bak", "wb");
-    if (backup1==NULL || backup2==NULL) promptError("Restore Shared Icon Cache", "No usable backup found.");
-    else {
+
+    if (backup1==NULL || backup2==NULL) {
+        promptError("Restore Shared Icon Cache", "No usable backup found.");
+    } else {
         res = FSUSER_OpenFile(&idb, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idb.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
-        printf("Opening file \"idb.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("Opening file \"idb.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
         res = FSUSER_OpenFile(&idbt, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idbt.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
-        printf("Opening file \"idbt.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("Opening file \"idbt.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
         u32 fsize1 = sizeof(SMDH_SHARED)*ENTRY_SHARED_COUNT;
         u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_SHARED_COUNT;
@@ -445,9 +543,9 @@ void restoreSharedIconCache() {
         fread(buffer2, 1, fsize2, backup2);
         printf("Restoring backup to \"idb.dat\"... ");
         res = FSFILE_Write(idb, &wsize1, 0x0, buffer1, fsize1, 0);
-        printf("%s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("%s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
         res = FSFILE_Write(idbt, &wsize2, 0x0, buffer2, fsize2, 0);
-        printf("%s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("%s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
         if(R_FAILED(res) || wsize1 < fsize1 || wsize2 < fsize2) promptError("Restore Shared Icon Cache", "Failed to restore backup.");
         else promptError("Restore Shared Icon Cache", "Successfully restored backup.");
 
@@ -458,38 +556,94 @@ void restoreSharedIconCache() {
         FSFILE_Close(idb);
         FSFILE_Close(idbt);
     }
+
+    printf("Press any key to continue.\n");
+    waitKey();
 }
 
 void clearHomemenuIconCache(bool wait = true) {
     Result res;
-    FS_Archive hmextdata = openHomemenuExtdata();
+    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
     res = FSUSER_DeleteFile(hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/Cache.dat"));
-    printf("Deleting file \"Cache.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     if (R_FAILED(res)) promptError("Clear HOME Menu Icon Cache", "Failed to delete cache file.");
+    printf("Deleting file \"Cache.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     res = FSUSER_DeleteFile(hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/CacheD.dat"));
-    printf("Deleting file \"CacheD.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     if (R_FAILED(res)) promptError("Clear HOME Menu Icon Cache", "Failed to delete cache file.");
+    printf("Deleting file \"CacheD.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     FSUSER_CloseArchive(hmextdata);
 
     if (wait) {
-        printf("Rebooting...\n");
-        svcSleepThread(2000000000);
-        APT_HardwareResetAsync();
+        if (envIsHomebrew()) {
+            printf("Press any key to continue.\n");
+            waitKey();
+        } else {
+            printf("Rebooting...\n");
+            svcSleepThread(2000000000);
+            APT_HardwareResetAsync();
+        }
     }
 }
 
-void updateHomemenuIconCache(bool wait = true) {
+bool backupHomemenuIconCache(bool wait = true) {
     Result res;
     Handle cache;
     Handle cached;
-    FS_Archive hmextdata = openHomemenuExtdata();
+    bool success = false;
+    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
+
+    res = FSUSER_OpenFile(&cache, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/Cache.dat"), FS_OPEN_READ, 0);
+    printf("Opening file \"Cache.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    res = FSUSER_OpenFile(&cached, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/CacheD.dat"), FS_OPEN_READ, 0);
+    printf("Opening file \"CacheD.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    FILE* backup1 = fopen("/3ds/cachetool/CacheD.bak", "wb");
+    FILE* backup2 = fopen("/3ds/cachetool/Cache.bak", "wb");
+    printf("Backing up icon data... ");
+    gfxEndFrame();
+
+    u32 fsize1 = sizeof(SMDH_HOMEMENU)*ENTRY_HOMEMENU_COUNT;
+    u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_HOMEMENU_COUNT;
+    u8* buffer1 = (u8*)malloc(fsize1);
+    u8* buffer2 = (u8*)malloc(fsize2);
+
+    FSFILE_Read(cached, NULL, 0x0, buffer1, fsize1);
+    FSFILE_Read(cache, NULL, 0x0, buffer2, fsize2);
+    FSFILE_Close(cached);
+    FSFILE_Close(cache);
+
+    success = ((fwrite(buffer1, 1, fsize1, backup1)==fsize1) && (fwrite(buffer2, 1, fsize2, backup2)==fsize2));
+    printf("%s.\n", success ? "OK" : "ERROR");
+
+    if (!success) promptError("Backup HOME Menu Icon Cache", "Couldn't backup icon data.");
+
+    free(buffer1);
+    free(buffer2);
+    fclose(backup1);
+    fclose(backup2);
+
+    if (wait) {
+        printf("Press any key to continue.\n");
+        waitKey();
+    }
+
+    return success;
+}
+
+void updateHomemenuIconCache() {
+    Result res;
+    Handle cache;
+    Handle cached;
+    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
     res = FSUSER_OpenFile(&cache, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/Cache.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
-    printf("Opening file \"Cache.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Opening file \"Cache.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     res = FSUSER_OpenFile(&cached, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/CacheD.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
-    printf("Opening file \"CacheD.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Opening file \"CacheD.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     u64 titlecount = 0;
     u64* tids = getTitleList(&titlecount);
@@ -501,17 +655,7 @@ void updateHomemenuIconCache(bool wait = true) {
     bool success = false;
 
     if (dobackup) {
-        FILE* backup1 = fopen("/3ds/cachetool/CacheD.bak", "wb");
-        FILE* backup2 = fopen("/3ds/cachetool/Cache.bak", "wb");
-        printf("Backing up icon data... ");
-        gfxEndFrame();
-
-        u32 fsize1 = sizeof(SMDH_HOMEMENU)*ENTRY_HOMEMENU_COUNT;
-        u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_HOMEMENU_COUNT;
-        success = ((fwrite(icons, 1, fsize1, backup1)==fsize1) && (fwrite(entries, 1, fsize2, backup2)==fsize2));
-        printf("%s.\n", success ? "OK" : "ERROR");
-        fclose(backup1);
-        fclose(backup2);
+        success = backupHomemenuIconCache(false);
     } else {
         printf("Skipping icon data backup.\n");
         success = true;
@@ -529,7 +673,7 @@ void updateHomemenuIconCache(bool wait = true) {
 
             u32 wsize = 0;
             res = FSFILE_Write(cached, &wsize, i*sizeof(SMDH_HOMEMENU), &icons[i], sizeof(SMDH_HOMEMENU), 0);
-            printf("\x1b[28;0HWriting entry %llu to file... %s %lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+            printf("\x1b[28;0HWriting entry %llu to file... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
             gfxEndFrame();
         }
     }
@@ -542,26 +686,27 @@ void updateHomemenuIconCache(bool wait = true) {
     FSFILE_Close(cached);
     FSUSER_CloseArchive(hmextdata);
 
-    if (wait) {
-        printf("\nPress any key to continue.\n");
-        waitKey();
-    }
+    printf("Press any key to continue.\n");
+    waitKey();
 }
 
 void restoreHomemenuIconCache() {
     Result res;
     Handle cached;
     Handle cache;
-    FS_Archive hmextdata = openHomemenuExtdata();
+    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
     FILE* backup1 = fopen("/3ds/cachetool/CacheD.bak", "rb");
     FILE* backup2 = fopen("/3ds/cachetool/Cache.bak", "rb");
-    if (backup1==NULL || backup2==NULL) promptError("Restore HOME Menu Icon Cache", "No usable backup found.");
-    else {
+
+    if (backup1==NULL || backup2==NULL) {
+        promptError("Restore HOME Menu Icon Cache", "No usable backup found.");
+    } else {
         res = FSUSER_OpenFile(&cached, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/CacheD.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
-        printf("Opening file \"CacheD.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("Opening file \"CacheD.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
         res = FSUSER_OpenFile(&cache, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/Cache.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
-        printf("Opening file \"Cache.dat\"... %s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("Opening file \"Cache.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
         u32 fsize1 = sizeof(SMDH_HOMEMENU)*ENTRY_HOMEMENU_COUNT;
         u32 fsize2 = sizeof(ENTRY_DATA)*ENTRY_HOMEMENU_COUNT;
@@ -572,12 +717,14 @@ void restoreHomemenuIconCache() {
 
         fread(buffer1, 1, fsize1, backup1);
         fread(buffer2, 1, fsize2, backup2);
+
         printf("Restoring backup to \"CacheD.dat\"... ");
         res = FSFILE_Write(cached, &wsize1, 0x0, buffer1, fsize1, 0);
-        printf("%s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("%s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
         printf("Restoring backup to \"Cache.dat\"... ");
         res = FSFILE_Write(cache, &wsize2, 0x0, buffer2, fsize2, 0);
-        printf("%s %lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+        printf("%s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
         if(R_FAILED(res) || wsize1 < fsize1 || wsize2 < fsize2) promptError("Restore HOME Menu Icon Cache", "Failed to restore backup.");
         else promptError("Restore HOME Menu Icon Cache", "Successfully restored backup.");
 
@@ -588,10 +735,145 @@ void restoreHomemenuIconCache() {
         FSFILE_Close(cached);
         FSFILE_Close(cache);
     }
+
+    printf("Press any key to continue.\n");
+    waitKey();
+}
+
+void unpackRepackHomemenuSoftware(bool repack) {
+    Result res;
+    Handle save;
+    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
+
+    res = FSUSER_OpenFile(&save, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/SaveData.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
+    char title[49];
+    snprintf(title, 48, "%s All HOME Menu Software.", repack ? "Repack" : "Unwrap");
+    if (R_FAILED(res)) promptError(title, "Failed to open HOME Menu savedata.");
+    printf("Opening file \"SaveData.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    u8* flags = (u8*)malloc(ENTRY_HOMEMENU_COUNT);
+
+    u32 rsize = 0;
+    res = FSFILE_Read(save, &rsize, 0xB48, flags, ENTRY_HOMEMENU_COUNT);
+    printf("Reading file \"SaveData.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    if (rsize==ENTRY_HOMEMENU_COUNT) {
+        u32 wsize = 0;
+        memset(flags, repack, ENTRY_HOMEMENU_COUNT);
+        res = FSFILE_Write(save, &wsize, 0xB48, flags, ENTRY_HOMEMENU_COUNT, 0);
+        if (R_FAILED(res) || wsize < ENTRY_HOMEMENU_COUNT) promptError(title, "Failed to write icon status flags.");
+    } else promptError(title, "Failed to read HOME Menu savedata.");
+
+    free(flags);
+
+    FSFILE_Close(save);
+    FSUSER_CloseArchive(hmextdata);
+
+    printf("Press any key to continue.\n");
+    waitKey();
+}
+
+void removeSoftwareUpdateNag(bool wait = true) {
+    Result res;
+    u32 sharedID = 0xF000000E;
+    FS_Archive shared = openExtdata(&sharedID, ARCHIVE_SHARED_EXTDATA);
+
+    res = FSUSER_DeleteFile(shared, (FS_Path)fsMakePath(PATH_ASCII, "/versionlist.dat"));
+    if (R_FAILED(res)) promptError("Remove Software Update Nag", "Failed to delete cache file.");
+    printf("Deleting file \"versionlist.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    FSUSER_CloseArchive(shared);
+
+    if (wait) {
+        printf("Press any key to continue.\n");
+        waitKey();
+    }
+}
+
+void resetEShopBGM() {
+    Result res;
+    u32 eshopID[3] = {0x00000209, 0x00000219, 0x00000229};
+    FS_Archive eshopext = openExtdata(eshopID, ARCHIVE_EXTDATA);
+
+    res = FSUSER_DeleteFile(eshopext, (FS_Path)fsMakePath(PATH_ASCII, "/boss_bgm1"));
+    if (R_FAILED(res)) promptError("Reset eShop BGM", "Failed to delete eShop BGM file.");
+    printf("Deleting file \"boss_bgm1\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    FSUSER_CloseArchive(eshopext);
+
+    printf("Press any key to continue.\n");
+    waitKey();
+}
+
+void replaceEShopBGM() {
+    Result res;
+    u32 eshopID[3] = {0x00000209, 0x00000219, 0x00000229};
+    FS_Archive eshopext = openExtdata(eshopID, ARCHIVE_EXTDATA);
+
+    FILE* newbgm = fopen("/3ds/cachetool/boss_bgm.aac", "rb"); // getOpenFilename("/3ds/cachetool");
+    FILE* newxml = fopen("/3ds/cachetool/boss_xml.xml", "rb");
+
+    if (newbgm==NULL || newxml==NULL) {
+        promptError("Replace eShop BGM", "Source file not found.");
+        fclose(newbgm);
+        fclose(newxml);
+        return;
+    }
+
+    fseek(newbgm, 0, SEEK_END);
+    fseek(newxml, 0, SEEK_END);
+    size_t fsize = ftell(newbgm);
+    size_t fsizex = ftell(newxml);
+    u8* buffer = (u8*)malloc(fsize);
+    u8* bufferx = (u8*)malloc(fsizex);
+    fseek(newbgm, 0, SEEK_SET);
+    fseek(newxml, 0, SEEK_SET);
+    fread(buffer, 1, fsize, newbgm);
+    fread(bufferx, 1, fsizex, newxml);
+    fclose(newbgm);
+    fclose(newxml);
+
+    FS_Path bgmpath = fsMakePath(PATH_ASCII, "/boss_bgm1");
+    FS_Path xmlpath = fsMakePath(PATH_ASCII, "/boss_xml1");
+
+    FSUSER_DeleteFile(eshopext, bgmpath);
+    FSUSER_DeleteFile(eshopext, xmlpath);
+    FSUSER_CreateFile(eshopext, bgmpath, 0, fsize);
+    FSUSER_CreateFile(eshopext, xmlpath, 0, fsizex);
+
+    Handle oldbgm;
+    Handle oldxml;
+    res = FSUSER_OpenFile(&oldbgm, eshopext, bgmpath, FS_OPEN_WRITE, 0);
+    if (R_FAILED(res)) promptError("Replace eShop BGM", "Failed to open eShop BGM file.");
+    printf("Opening file \"boss_bgm1\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    res = FSUSER_OpenFile(&oldxml, eshopext, xmlpath, FS_OPEN_WRITE, 0);
+    if (R_FAILED(res)) promptError("Replace eShop BGM", "Failed to open eShop BGM metadata file.");
+    printf("Opening file \"boss_xml1\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    u32 wsize = 0;
+    printf("Replacing file \"boss_bgm1\"... ");
+    res = FSFILE_Write(oldbgm, &wsize, 0x0, buffer, fsize, FS_WRITE_FLUSH);
+    if (R_FAILED(res) || wsize < fsize) promptError("Replace eShop BGM", "Failed to replace eShop BGM file.");
+    printf("%s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Replacing file \"boss_xml1\"... ");
+    res = FSFILE_Write(oldxml, &wsize, 0x0, bufferx, fsizex, FS_WRITE_FLUSH);
+    if (R_FAILED(res) || wsize < fsizex) promptError("Replace eShop BGM", "Failed to replace eShop BGM metadata file.");
+    printf("%s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    FSFILE_Close(oldbgm);
+    FSFILE_Close(oldxml);
+    FSUSER_CloseArchive(eshopext);
+
+    free(buffer);
+    free(bufferx);
+
+    printf("Press any key to continue.\n");
+    waitKey();
 }
 
 void goBerserk() {
-    if (!promptConfirm("Go Berserk and Clear Everything", "CLEAR ALL PLAY LOGS AND CACHED ICON DATA?")) return;
+    if (!promptConfirm("Go Berserk and Clear Everything", "CLEAR ALL LOGS AND CACHED ICON DATA?")) return;
     clearStepHistory(false);
     clearPlayHistory(false);
     clearSharedIconCache(false);
@@ -604,16 +886,9 @@ void goBerserk() {
 int main() {
     gfxInitDefault();
     consoleInit(GFX_TOP, NULL);
-    // ptmSysmInit();
-
-    if (R_FAILED(srvGetServiceHandle(&ptmSysmHandle, "ptm:sysm"))) {
-        promptError("SysMenu PTM Service", "Failed to get ptm:sysm service handle.");
-        gfxExit();
-        return 0;
-    }
-
+    if (R_FAILED(srvGetServiceHandle(&ptmSysmHandle, "ptm:sysm"))) promptError("SysMenu PTM Service", "Failed to get ptm:sysm service handle.");
+    if (R_FAILED(srvGetServiceHandle(&amHandle, "am:net"))) promptError("Application Manager Service", "Failed to get am:net service handle.");
     cfguInit();
-    amInit();
     fsInit();
 
     mkdir("/3ds/cachetool", 0777);
@@ -621,22 +896,68 @@ int main() {
     hidScanInput();
     u32 kHeld = hidKeysHeld();
 
-    u8 option = 0;
+    u8 menucount[SUBMENU_COUNT] = {6, 4, 4, 4, 4, 6, 3};
+    const char* menuentries[SUBMENU_COUNT][MAX_OPTIONS_PER_SUBMENU] = 
+    {
+        {
+            "Activity Log management.",
+            "[COMING SOON]", // "Friends List management.",
+            "Shared icon cache management.",
+            "HOME Menu icon cache management.",
+            "HOME Menu software management.",
+            "Miscellaneous."
+        },
+        {
+            "Clear play history.",
+            "Clear step history.",
+            "Clear software library.",
+            "[COMING SOON]" // "Edit software library."
+        },
+        {
+            "Clear Friends List.",
+            "Edit Friends List.",
+            "Backup Friends List.",
+            "Restore Friends List."
+        },
+        {
+            "Clear shared icon cache.",
+            "Update shared icon cache.",
+            "Backup shared icon cache.",
+            "Restore shared icon cache."
+        },
+        {
+            "Clear HOME Menu icon cache.",
+            "Update HOME Menu icon cache.",
+            "Backup HOME Menu icon cache.",
+            "Restore HOME Menu icon cache."
+        },
+        {
+            "Reset demo play count.",
+            "[COMING SOON]", // "Reset folder count.",
+            "Unwrap all HOME Menu software.",
+            "Repack all HOME Menu software.",
+            "Remove software update nag.",
+            "[COMING SOON]" // "Remove system update nag."
+        },
+        {
+            "[COMING SOON]", // "Clear Game Notes.",
+            "Reset eShop BGM.",
+            "Replace eShop BGM."
+        }
+    };
+
+    u8 option[SUBMENU_COUNT] = {0};
+    u8 submenu = 0;
 
     if (kHeld & KEY_L) goBerserk();
     else while (aptMainLoop()) {
         printf("\x1b[0;0H\x1b[30;47m%-50s", " ");
-        printf("\x1b[0;13H%s\x1b[0;0m", "Cthulhu (CacheTool) v1.0");
-        printf("\x1b[1;2HClear step history.");
-        printf("\x1b[2;2HClear play history.");
-        printf("\x1b[3;2HClear shared icon cache.");
-        printf("\x1b[4;2HUpdate shared icon cache.");
-        printf("\x1b[5;2HRestore shared icon cache.");
-        printf("\x1b[6;2HClear HOME Menu icon cache.");
-        printf("\x1b[7;2HUpdate HOME Menu icon cache.");
-        printf("\x1b[8;2HRestore HOME Menu icon cache.");
-        printf("\x1b[9;2HGO BERSERK AND CLEAR EVERYTHING!");
-        printf("\x1b[%u;0H>", option + 1);
+        printf("\x1b[0;13H%s\x1b[0;0m", "Cthulhu (CacheTool) v1.1");
+
+        for (u8 i = 0; i <= menucount[submenu]; i++) {
+            if (i < menucount[submenu]) printf("\x1b[%u;2H%-48s", i+1, menuentries[submenu][i]);
+            else if (submenu > 0) printf("\x1b[%u;2H%-48s", i+1, "Go back.");
+        } printf("\x1b[%u;0H>", option[submenu] + 1);
 
         printf("\x1b[28;0HPress SELECT to toggle auto backup.");
         printf("\x1b[29;0HAuto backup of icon cache: %s", dobackup ? "ON " : "OFF");
@@ -645,31 +966,56 @@ int main() {
         u32 kDown = hidKeysDown();
 
         if (kDown & KEY_DOWN) {
-            if (option < 8) printf("\x1b[%u;0H ", ++option);
-            // else option = 0;
-        }
-        if (kDown & KEY_UP) {
-            if (option > 0) printf("\x1b[%u;0H ", 1+(option--));
-            // else option = 7;
-        }
-
-        if (kDown & KEY_SELECT) {
-            dobackup = !dobackup;
-        }
-
-        if ((kDown & KEY_A)) {
-            switch(option) {
-                case 0: if (promptConfirm("Clear Step History", "This can't be undone. Are you sure?")) clearStepHistory(); break;
-                case 1: if (promptConfirm("Clear Play History", "This can't be undone. Are you sure?")) clearPlayHistory(); break;
-                case 2: if (promptConfirm("Clear Shared Icon Cache", "This will also clear your Activity Log title list.Are you sure?")) clearSharedIconCache(); break;
-                case 3: if (promptConfirm("Update Shared Icon Cache", "Update shared cached icon data?")) updateSharedIconCache(); break;
-                case 4: if (promptConfirm("Restore Shared Icon Cache", "Restore cached icon data from backup?")) restoreSharedIconCache(); break;
-                case 5: if (promptConfirm("Clear HOME Menu Icon Cache", "Delete cached icon data? The system will reboot afterwards.")) clearHomemenuIconCache(); break;
-                case 6: if (promptConfirm("Update HOME Menu Icon Cache", "Update HOME Menu cached icon data?")) updateHomemenuIconCache(); break;
-                case 7: if (promptConfirm("Restore HOME Menu Icon Cache", "Restore cached icon data from backup?")) restoreHomemenuIconCache(); break;
-                case 8: goBerserk(); break;
+            if (option[submenu] < menucount[submenu]-(submenu==0)) {
+                printf("\x1b[%u;0H ", ++option[submenu]);
+            } else {
+                printf("\x1b[%u;0H ", option[submenu]+1);
+                option[submenu] = 0;
+            }
+        } else if (kDown & KEY_UP) {
+            if (option[submenu] > 0) {
+                printf("\x1b[%u;0H ", 1+(option[submenu]--));
+            } else {
+                printf("\x1b[%u;0H ", option[submenu]+1);
+                option[submenu] = menucount[submenu]-(submenu==0);
             }
         }
+
+        if (kDown & KEY_A) {
+            if (submenu==0) {
+                submenu = option[0]+1;
+                consoleClear();
+            } else switch(submenu*MAX_OPTIONS_PER_SUBMENU + option[submenu]) {
+                case 10: if (promptConfirm("Clear Play History", "This can't be undone without a backup. Are you sure?")) clearPlayHistory(); break;
+                case 11: if (promptConfirm("Clear Step History", "This can't be undone without a backup. Are you sure?")) clearStepHistory(); break;
+                case 12: if (promptConfirm("Clear Software Library", "This can't be undone without a backup. Are you sure?")) clearSoftwareLibrary(); break;
+
+                case 30: if (promptConfirm("Clear Shared Icon Cache", "This will also clear your software library. Are you sure?")) clearSharedIconCache(); break;
+                case 31: if (promptConfirm("Update Shared Icon Cache", "Update shared cached icon data?")) updateSharedIconCache(); break;
+                case 32: if (promptConfirm("Backup Shared Icon Cache", "Backup shared cached icon data?")) backupSharedIconCache(); break;
+                case 33: if (promptConfirm("Restore Shared Icon Cache", "Restore cached icon data from backup?")) restoreSharedIconCache(); break;
+
+                case 40: if (promptConfirm("Clear HOME Menu Icon Cache", "Delete cached icon data? The system will reboot afterwards.")) clearHomemenuIconCache(); break;
+                case 41: if (promptConfirm("Update HOME Menu Icon Cache", "Update HOME Menu cached icon data?")) updateHomemenuIconCache(); break;
+                case 42: if (promptConfirm("Backup HOME Menu Icon Cache", "Backup HOME Menu cached icon data?")) backupHomemenuIconCache(); break;
+                case 43: if (promptConfirm("Restore HOME Menu Icon Cache", "Restore cached icon data from backup?")) restoreHomemenuIconCache(); break;
+
+                case 50: if (promptConfirm("Reset Demo Play Count", "Reset play count of all installed demos?")) resetDemoPlayCount(); break;
+                case 52: if (promptConfirm("Unwrap All HOME Menu Software", "Unwrap all gift-wrapped software on HOME Menu?")) unpackRepackHomemenuSoftware(false); break;
+                case 53: if (promptConfirm("Repack All HOME Menu Software", "Gift-wrap all software on HOME Menu?")) unpackRepackHomemenuSoftware(true); break;
+                case 54: if (promptConfirm("Remove Software Update Nag", "Remove update nag of all installed software?")) removeSoftwareUpdateNag(); break;
+
+                case 61: if (promptConfirm("Reset eShop BGM", "Restore the original Nintendo eShop music?")) resetEShopBGM(); break;
+                case 62: if (promptConfirm("Replace eShop BGM", "Replace the current Nintendo eShop music?")) replaceEShopBGM(); break;
+
+                default: submenu = 0; consoleClear(); break;
+            }
+        } else if ((kDown & KEY_B) && (submenu > 0)) {
+            submenu = 0;
+            consoleClear();
+        }
+
+        if (kDown & KEY_SELECT) dobackup = !dobackup;
 
         if (kDown & KEY_START) break;
 
@@ -677,10 +1023,9 @@ int main() {
     }
 
     fsExit();
-    amExit();
     cfguExit();
     svcCloseHandle(ptmSysmHandle);
-    // ptmSysmExit();
+    svcCloseHandle(amHandle);
     gfxExit();
     return 0;
 }
