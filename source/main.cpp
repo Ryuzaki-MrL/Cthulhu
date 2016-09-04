@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <dirent.h>
+#include <unistd.h>
 #include <string>
 #include <cstring>
 #include <3ds.h>
@@ -118,6 +119,14 @@ void gfxEndFrame() {
     gfxFlushBuffers();
     gfxSwapBuffers();
     gspWaitForVBlank();
+}
+
+bool pathExists(char* path) {
+    bool result = false;
+    DIR *dir = opendir(path);
+    if (dir != NULL) result = true;
+    closedir(dir);
+    return result;
 }
 
 u32 waitKey() {
@@ -422,8 +431,8 @@ bool backupSharedIconCache(bool wait = true) {
     res = FSUSER_OpenFile(&idbt, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idbt.dat"), FS_OPEN_READ, 0);
     printf("Opening file \"idbt.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
-    FILE* backup1 = fopen("/3ds/cachetool/idb.bak", "wb");
-    FILE* backup2 = fopen("/3ds/cachetool/idbt.bak", "wb");
+    FILE* backup1 = fopen("/3ds/data/cthulhu/idb.bak", "wb");
+    FILE* backup2 = fopen("/3ds/data/cthulhu/idbt.bak", "wb");
     printf("Backing up icon data... ");
     gfxEndFrame();
 
@@ -497,7 +506,7 @@ void updateSharedIconCache() {
 
             u32 wsize = 0;
             res = FSFILE_Write(idb, &wsize, i*sizeof(SMDH_SHARED), &icons[i], sizeof(SMDH_SHARED), 0);
-            printf("\x1b[24;0HWriting entry %llu to file... %s %#lx.", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+            printf("\x1b[24;0HWriting entry %llu to file... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
             gfxEndFrame();
         }
     }
@@ -521,8 +530,8 @@ void restoreSharedIconCache() {
     u32 sharedID = 0xF000000B;
     FS_Archive shared = openExtdata(&sharedID, ARCHIVE_SHARED_EXTDATA);
 
-    FILE* backup1 = fopen("/3ds/cachetool/idb.bak", "wb");
-    FILE* backup2 = fopen("/3ds/cachetool/idbt.bak", "wb");
+    FILE* backup1 = fopen("/3ds/data/cthulhu/idb.bak", "wb");
+    FILE* backup2 = fopen("/3ds/data/cthulhu/idbt.bak", "wb");
 
     if (backup1==NULL || backup2==NULL) {
         promptError("Restore Shared Icon Cache", "No usable backup found.");
@@ -600,8 +609,8 @@ bool backupHomemenuIconCache(bool wait = true) {
     res = FSUSER_OpenFile(&cached, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/CacheD.dat"), FS_OPEN_READ, 0);
     printf("Opening file \"CacheD.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
-    FILE* backup1 = fopen("/3ds/cachetool/CacheD.bak", "wb");
-    FILE* backup2 = fopen("/3ds/cachetool/Cache.bak", "wb");
+    FILE* backup1 = fopen("/3ds/data/cthulhu/CacheD.bak", "wb");
+    FILE* backup2 = fopen("/3ds/data/cthulhu/Cache.bak", "wb");
     printf("Backing up icon data... ");
     gfxEndFrame();
 
@@ -697,8 +706,8 @@ void restoreHomemenuIconCache() {
     u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
     FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
-    FILE* backup1 = fopen("/3ds/cachetool/CacheD.bak", "rb");
-    FILE* backup2 = fopen("/3ds/cachetool/Cache.bak", "rb");
+    FILE* backup1 = fopen("/3ds/data/cthulhu/CacheD.bak", "rb");
+    FILE* backup2 = fopen("/3ds/data/cthulhu/Cache.bak", "rb");
 
     if (backup1==NULL || backup2==NULL) {
         promptError("Restore HOME Menu Icon Cache", "No usable backup found.");
@@ -811,8 +820,8 @@ void replaceEShopBGM() {
     u32 eshopID[3] = {0x00000209, 0x00000219, 0x00000229};
     FS_Archive eshopext = openExtdata(eshopID, ARCHIVE_EXTDATA);
 
-    FILE* newbgm = fopen("/3ds/cachetool/boss_bgm.aac", "rb"); // getOpenFilename("/3ds/cachetool");
-    FILE* newxml = fopen("/3ds/cachetool/boss_xml.xml", "rb");
+    FILE* newbgm = fopen("/3ds/data/cthulhu/boss_bgm.aac", "rb"); // getOpenFilename("/3ds/data/cthulhu");
+    FILE* newxml = fopen("/3ds/data/cthulhu/boss_xml.xml", "rb");
 
     if (newbgm==NULL || newxml==NULL) {
         promptError("Replace eShop BGM", "Source file not found.");
@@ -883,6 +892,16 @@ void goBerserk() {
     APT_HardwareResetAsync();
 }
 
+void moveDataFolder() {
+    rename("/3ds/cachetool/idb.bak", "/3ds/data/cthulhu/idb.bak");
+    rename("/3ds/cachetool/idbt.bak", "/3ds/data/cthulhu/idbt.bak");
+    rename("/3ds/cachetool/Cache.bak", "/3ds/data/cthulhu/Cache.bak");
+    rename("/3ds/cachetool/CacheD.bak", "/3ds/data/cthulhu/CacheD.bak");
+    rename("/3ds/cachetool/boss_bgm.aac", "/3ds/data/cthulhu/boss_bgm.aac");
+    rename("/3ds/cachetool/boss_xml.xml", "/3ds/data/cthulhu/boss_xml.xml");
+    rmdir("/3ds/cachetool");
+}
+
 int main() {
     gfxInitDefault();
     consoleInit(GFX_TOP, NULL);
@@ -891,7 +910,10 @@ int main() {
     cfguInit();
     fsInit();
 
-    mkdir("/3ds/cachetool", 0777);
+    mkdir("/3ds/data", 0777);
+    mkdir("/3ds/data/cthulhu", 0777);
+    char oldpath[] = "/3ds/cachetool";
+    if (pathExists(oldpath)) moveDataFolder();
 
     hidScanInput();
     u32 kHeld = hidKeysHeld();
