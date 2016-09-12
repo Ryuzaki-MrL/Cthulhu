@@ -365,7 +365,7 @@ void clearSoftwareLibrary(bool wait = true) {
     FS_Archive syssave = openSystemSavedata(activitylogID);
 
     res = FSUSER_DeleteFile(syssave, (FS_Path)fsMakePath(PATH_ASCII, "/pld.dat"));
-    if (R_FAILED(res)) promptError("Clear Software Library", "Failed to software library data.");
+    if (R_FAILED(res)) promptError("Clear Software Library", "Failed to delete software library data.");
     printf("Deleting file \"pld.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     FSUSER_CloseArchive(syssave);
@@ -800,6 +800,22 @@ void removeSoftwareUpdateNag(bool wait = true) {
     }
 }
 
+void clearGameNotes() {
+    Result res;
+
+    u32 gamenotesID[3] = {0x00020087, 0x00020093, 0x0002009C};
+    FS_Archive syssave = openSystemSavedata(gamenotesID);
+
+    res = FSUSER_DeleteDirectory(syssave, (FS_Path)fsMakePath(PATH_ASCII, "/memo"));
+    if (R_FAILED(res)) promptError("Clear Game Notes", "Failed to delete game notes.");
+    printf("Deleting folder \"memo\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    FSUSER_CloseArchive(syssave);
+
+    printf("Press any key to continue.\n");
+    waitKey();
+}
+
 void resetEShopBGM() {
     Result res;
     u32 eshopID[3] = {0x00000209, 0x00000219, 0x00000229};
@@ -887,6 +903,7 @@ void goBerserk() {
     clearPlayHistory(false);
     clearSharedIconCache(false);
     clearHomemenuIconCache(false);
+    removeSoftwareUpdateNag(false);
     printf("Rebooting...\n");
     svcSleepThread(2000000000);
     APT_HardwareResetAsync();
@@ -918,12 +935,12 @@ int main() {
     hidScanInput();
     u32 kHeld = hidKeysHeld();
 
-    u8 menucount[SUBMENU_COUNT] = {6, 4, 4, 4, 4, 6, 3};
+    u8 menucount[SUBMENU_COUNT] = {6, 4, 3, 4, 4, 5, 3};
     const char* menuentries[SUBMENU_COUNT][MAX_OPTIONS_PER_SUBMENU] = 
     {
         {
             "Activity Log management.",
-            "[COMING SOON]", // "Friends List management.",
+            "Friends List management.",
             "Shared icon cache management.",
             "HOME Menu icon cache management.",
             "HOME Menu software management.",
@@ -936,10 +953,9 @@ int main() {
             "[COMING SOON]" // "Edit software library."
         },
         {
-            "Clear Friends List.",
-            "Edit Friends List.",
-            "Backup Friends List.",
-            "Restore Friends List."
+            "[COMING SOON]", // "Clear Friends List.",
+            "[COMING SOON]", // "Backup Friends List.",
+            "[COMING SOON]" // "Restore Friends List."
         },
         {
             "Clear shared icon cache.",
@@ -958,11 +974,11 @@ int main() {
             "[COMING SOON]", // "Reset folder count.",
             "Unwrap all HOME Menu software.",
             "Repack all HOME Menu software.",
-            "Remove software update nag.",
-            "[COMING SOON]" // "Remove system update nag."
+            "Remove software update nag."//,
+            // "Remove system update nag."
         },
         {
-            "[COMING SOON]", // "Clear Game Notes.",
+            "Clear Game Notes.",
             "Reset eShop BGM.",
             "Replace eShop BGM."
         }
@@ -974,7 +990,7 @@ int main() {
     if (kHeld & KEY_L) goBerserk();
     else while (aptMainLoop()) {
         printf("\x1b[0;0H\x1b[30;47m%-50s", " ");
-        printf("\x1b[0;13H%s\x1b[0;0m", "Cthulhu (CacheTool) v1.1");
+        printf("\x1b[0;19H%s\x1b[0;0m", "Cthulhu v1.1");
 
         for (u8 i = 0; i <= menucount[submenu]; i++) {
             if (i < menucount[submenu]) printf("\x1b[%u;2H%-48s", i+1, menuentries[submenu][i]);
@@ -1027,6 +1043,7 @@ int main() {
                 case 53: if (promptConfirm("Repack All HOME Menu Software", "Gift-wrap all software on HOME Menu?")) unpackRepackHomemenuSoftware(true); break;
                 case 54: if (promptConfirm("Remove Software Update Nag", "Remove update nag of all installed software?")) removeSoftwareUpdateNag(); break;
 
+                case 60: if (promptConfirm("Clear Game Notes", "Delete all of your game notes?")) clearGameNotes(); break;
                 case 61: if (promptConfirm("Reset eShop BGM", "Restore the original Nintendo eShop music?")) resetEShopBGM(); break;
                 case 62: if (promptConfirm("Replace eShop BGM", "Replace the current Nintendo eShop music?")) replaceEShopBGM(); break;
 
