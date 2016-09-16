@@ -806,9 +806,11 @@ void clearGameNotes() {
     u32 gamenotesID[3] = {0x00020087, 0x00020093, 0x0002009C};
     FS_Archive syssave = openSystemSavedata(gamenotesID);
 
-    res = FSUSER_DeleteDirectory(syssave, (FS_Path)fsMakePath(PATH_ASCII, "/memo"));
+    res = FSUSER_DeleteDirectory(syssave, (FS_Path)fsMakePath(PATH_ASCII, "/memo/"));
     if (R_FAILED(res)) promptError("Clear Game Notes", "Failed to delete game notes.");
     printf("Deleting folder \"memo\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    res = FSUSER_DeleteFile(syssave, (FS_Path)fsMakePath(PATH_ASCII, "/cfg.bin"));
+    printf("Deleting file \"cfg.bin\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     FSUSER_CloseArchive(syssave);
 
