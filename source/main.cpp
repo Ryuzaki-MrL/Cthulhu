@@ -103,12 +103,24 @@ Result PTMSYSM_ClearPlayHistory(void)
 	return (Result)cmdbuf[1];
 }
 
-Result AM_DeleteAllDemoLaunchInfos(void)
+Result AM_DeleteAllTemporaryPrograms(void)
 {
 	Result ret;
 	u32 *cmdbuf = getThreadCommandBuffer();
 
-	cmdbuf[0] = IPC_MakeHeader(0x827,0,0); // 0x8270000
+	cmdbuf[0] = IPC_MakeHeader(0x16,0,0); // 0x160000
+
+	if(R_FAILED(ret = svcSendSyncRequest(amHandle)))return ret;
+
+	return (Result)cmdbuf[1];
+}
+
+Result AM_DeleteAllExpiredUserPrograms(void)
+{
+	Result ret;
+	u32 *cmdbuf = getThreadCommandBuffer();
+
+	cmdbuf[0] = IPC_MakeHeader(0x1F,1,0); // 0x1F0040
 
 	if(R_FAILED(ret = svcSendSyncRequest(amHandle)))return ret;
 
@@ -777,6 +789,7 @@ void unpackRepackHomemenuSoftware(bool repack) {
     free(flags);
 
     FSFILE_Close(save);
+    FSUSER_ControlArchive(hmextdata, ARCHIVE_ACTION_COMMIT_SAVE_DATA, NULL, 0, NULL, 0);
     FSUSER_CloseArchive(hmextdata);
 
     printf("Press any key to continue.\n");
@@ -792,6 +805,7 @@ void removeSoftwareUpdateNag(bool wait = true) {
     if (R_FAILED(res)) promptError("Remove Software Update Nag", "Failed to delete cache file.");
     printf("Deleting file \"versionlist.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
+    FSUSER_ControlArchive(shared, ARCHIVE_ACTION_COMMIT_SAVE_DATA, NULL, 0, NULL, 0);
     FSUSER_CloseArchive(shared);
 
     if (wait) {
@@ -800,18 +814,46 @@ void removeSoftwareUpdateNag(bool wait = true) {
     }
 }
 
+void resetFolderCount() {
+    Result res;
+    Handle save;
+
+    u32 homemenuID[3] = {0x00020082, 0x0002008f, 0x00020098};
+    FS_Archive syssave = openSystemSavedata(homemenuID);
+
+    res = FSUSER_OpenFile(&save, syssave, (FS_Path)fsMakePath(PATH_ASCII, "/Launcher.dat"), FS_OPEN_WRITE, 0);
+    if (R_FAILED(res)) promptError("Reset Folder Count", "Failed to open HOME Menu savedata.");
+    u8 count = 1;
+    res = FSFILE_Write(save, NULL, 0xD80, &count, sizeof(u8), 0);
+    res = FSFILE_Write(save, NULL, 0xD85, &count, sizeof(u8), 0);
+    printf("Reseting folder count to 1... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    FSFILE_Close(save);
+    FSUSER_ControlArchive(syssave, ARCHIVE_ACTION_COMMIT_SAVE_DATA, NULL, 0, NULL, 0);
+    FSUSER_CloseArchive(syssave);
+
+    printf("Press any key to continue.\n");
+    waitKey();
+}
+
 void clearGameNotes() {
     Result res;
+    char path[16];
 
     u32 gamenotesID[3] = {0x00020087, 0x00020093, 0x0002009C};
     FS_Archive syssave = openSystemSavedata(gamenotesID);
 
+    for (int i = 0; i < 16; i++) {
+        snprintf(path, 13, "/memo/memo%02u", i);
+        res = FSUSER_DeleteFile(syssave, (FS_Path)fsMakePath(PATH_ASCII, path));
+        printf("Deleting file \"%s\" %s %#lx.\n", path, R_FAILED(res) ? "ERROR" : "OK", res);
+    }
+
     res = FSUSER_DeleteDirectory(syssave, (FS_Path)fsMakePath(PATH_ASCII, "/memo/"));
     if (R_FAILED(res)) promptError("Clear Game Notes", "Failed to delete game notes.");
-    printf("Deleting folder \"memo\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
-    res = FSUSER_DeleteFile(syssave, (FS_Path)fsMakePath(PATH_ASCII, "/cfg.bin"));
-    printf("Deleting file \"cfg.bin\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    printf("Deleting directory \"memo\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
+    FSUSER_ControlArchive(syssave, ARCHIVE_ACTION_COMMIT_SAVE_DATA, NULL, 0, NULL, 0);
     FSUSER_CloseArchive(syssave);
 
     printf("Press any key to continue.\n");
@@ -901,6 +943,7 @@ void replaceEShopBGM() {
 
 void goBerserk() {
     if (!promptConfirm("Go Berserk and Clear Everything", "CLEAR ALL LOGS AND CACHED ICON DATA?")) return;
+    if (!promptConfirm("Go Berserk and Clear Everything", "ARE YOU REALLY SURE?")) return;
     clearStepHistory(false);
     clearPlayHistory(false);
     clearSharedIconCache(false);
@@ -925,7 +968,8 @@ int main() {
     gfxInitDefault();
     consoleInit(GFX_TOP, NULL);
     if (R_FAILED(srvGetServiceHandle(&ptmSysmHandle, "ptm:sysm"))) promptError("SysMenu PTM Service", "Failed to get ptm:sysm service handle.");
-    if (R_FAILED(srvGetServiceHandle(&amHandle, "am:net"))) promptError("Application Manager Service", "Failed to get am:net service handle.");
+    // if (R_FAILED(srvGetServiceHandle(&amHandle, "am:net"))) promptError("Application Manager Service", "Failed to get am:net service handle.");
+    amInit();
     cfguInit();
     fsInit();
 
@@ -973,10 +1017,10 @@ int main() {
         },
         {
             "Reset demo play count.",
-            "[COMING SOON]", // "Reset folder count.",
+            "Reset folder count.",
             "Unwrap all HOME Menu software.",
             "Repack all HOME Menu software.",
-            "Remove software update nag."//,
+            "Remove software update nag."
             // "Remove system update nag."
         },
         {
@@ -1041,9 +1085,11 @@ int main() {
                 case 43: if (promptConfirm("Restore HOME Menu Icon Cache", "Restore cached icon data from backup?")) restoreHomemenuIconCache(); break;
 
                 case 50: if (promptConfirm("Reset Demo Play Count", "Reset play count of all installed demos?")) resetDemoPlayCount(); break;
+                case 51: if (promptConfirm("Reset Folder Count", "Reset folder count back to 1?")) resetFolderCount(); break;
                 case 52: if (promptConfirm("Unwrap All HOME Menu Software", "Unwrap all gift-wrapped software on HOME Menu?")) unpackRepackHomemenuSoftware(false); break;
                 case 53: if (promptConfirm("Repack All HOME Menu Software", "Gift-wrap all software on HOME Menu?")) unpackRepackHomemenuSoftware(true); break;
                 case 54: if (promptConfirm("Remove Software Update Nag", "Remove update nag of all installed software?")) removeSoftwareUpdateNag(); break;
+                // case 55: if (promptConfirm("Remove System Update Nag", "Delete automatic system update data?")) removeSystemUpdateNag(); break;
 
                 case 60: if (promptConfirm("Clear Game Notes", "Delete all of your game notes?")) clearGameNotes(); break;
                 case 61: if (promptConfirm("Reset eShop BGM", "Restore the original Nintendo eShop music?")) resetEShopBGM(); break;
@@ -1056,7 +1102,7 @@ int main() {
             consoleClear();
         }
 
-        if (kDown & KEY_SELECT) dobackup = !dobackup;
+        if (kDown & KEY_SELECT) dobackup ^= true;
 
         if (kDown & KEY_START) break;
 
@@ -1065,8 +1111,9 @@ int main() {
 
     fsExit();
     cfguExit();
+    amExit();
     svcCloseHandle(ptmSysmHandle);
-    svcCloseHandle(amHandle);
+    // svcCloseHandle(amHandle);
     gfxExit();
     return 0;
 }
