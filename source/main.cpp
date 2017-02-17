@@ -4,13 +4,20 @@
 #include <unistd.h>
 #include <string>
 #include <cstring>
+#include <algorithm>
 #include <3ds.h>
 
 #define ENTRY_SHARED_COUNT 0x200
 #define ENTRY_HOMEMENU_COUNT 0x168
+#define ENTRY_ACTIVITY_START 0xC3510
+#define ENTRY_ACTIVITY_COUNT 0x100
 
 #define SUBMENU_COUNT 7
 #define MAX_OPTIONS_PER_SUBMENU 10
+
+#define VERSION_MAJOR 1
+#define VERSION_MINOR 2
+#define VERSION_MICRO 0
 
 bool dobackup = true;
 
@@ -66,6 +73,22 @@ typedef struct {
     u32 unknown[2];
     u64 titleid;
 } ENTRY_DATA;
+
+typedef struct {
+    u64 titleid;
+    u32 totalPlayed;
+    u16 timesPlayed;
+    u16 flags;
+    u16 firstPlayed;
+    u16 lastPlayed;
+    u32 padding;
+} ENTRY_ACTIVITY;
+
+typedef struct {
+    u16 year;
+    u8 month;
+    u8 day;
+} DATE;
 
 Result PTMSYSM_FormatSavedata(void)
 {
@@ -133,6 +156,31 @@ void gfxEndFrame() {
     gspWaitForVBlank();
 }
 
+DATE getDate(u32 J) {
+    long int f = J + 1401 + (((4 * J + 274277) / 146097) * 3) / 4 - 38;
+    long int e = 4 * f + 3;
+    long int g = (e % 1461) / 4;
+    long int h = 5 * g + 2;
+    u8 D = (h % 153) / 5 + 1;
+    u8 M = (h / 153 + 2) % 12 + 1;
+    u16 Y = (e / 1461) - 4716 + (12 + 2 - M) / 12;
+    DATE date = {Y, M, D};
+    return date;
+}
+
+u32 getJulianDay(DATE* date) {
+    int a = (14 - date->month) / 12;
+    int y = date->year + 4800 - a;
+    int m = date->month + 12*a - 3;
+    return (date->day) + ((153*m + 2) / 5) + 365*y + (y / 4) - (y / 100) + (y / 400) - 32045;
+}
+
+void utf2ascii(char* dst, u16* src) {
+    if (!src || !dst) return;
+    while(*src) *(dst++)=(*(src++))&0xFF;
+    *dst=0x00;
+}
+
 bool pathExists(char* path) {
     bool result = false;
     DIR *dir = opendir(path);
@@ -156,8 +204,8 @@ u32 waitKey() {
 bool promptConfirm(std::string title, std::string message) {
     consoleClear();
     printf("\x1b[0;0H\x1b[30;47m%-50s", " ");
-    printf("\x1b[0;%uH%s\x1b[0;0m", (25 - (title.size() / 2)), title.c_str());
-    printf("\x1b[14;%uH%s", (25 - (message.size() / 2)), message.c_str());
+    printf("\x1b[0;%uH%s\x1b[0;0m", (25 - (title.size() >> 1)), title.c_str());
+    printf("\x1b[14;%uH%s", (25 - (message.size() >> 1)), message.c_str());
     printf("\x1b[16;14H\x1b[32m(A)\x1b[37m Confirm / \x1b[31m(B)\x1b[37m Cancel");
     u32 kDown = waitKey();
     if (kDown & KEY_A) return true;
@@ -167,8 +215,8 @@ bool promptConfirm(std::string title, std::string message) {
 void promptError(std::string title, std::string message) {
     consoleClear();
     printf("\x1b[0;0H\x1b[30;47m%-50s", " ");
-    printf("\x1b[0;%uH%s\x1b[0;0m", (25 - (title.size() / 2)), title.c_str());
-    printf("\x1b[14;%uH%s", (25 - (message.size() / 2)), message.c_str());
+    printf("\x1b[0;%uH%s\x1b[0;0m", (25 - (title.size() >> 1)), title.c_str());
+    printf("\x1b[14;%uH%s", (25 - (message.size() >> 1)), message.c_str());
     waitKey();
 }
 
@@ -179,9 +227,9 @@ u64* getTitleList(u64* count) {
 
     amInit();
     res = AM_GetTitleCount(MEDIATYPE_NAND, &count1);
-    if(R_FAILED(res)) return NULL;
+    if(R_FAILED(res)) return nullptr;
     res = AM_GetTitleCount(MEDIATYPE_SD, &count2);
-    if(R_FAILED(res)) return NULL;
+    if(R_FAILED(res)) return nullptr;
 
     u64* tids = new u64[count1 + count2];
 
@@ -282,7 +330,7 @@ SMDH_HOMEMENU* getSystemIconList(u64* tids, u64 count) {
     u32 count2 = (u32)(count & 0xFFFFFFFF);
     u64 countt = (count1 + count2);
 
-    if (countt == 0) return NULL;
+    if (countt==0 || !tids) return nullptr;
 
     SMDH_HOMEMENU* icons = new SMDH_HOMEMENU[countt];
 
@@ -318,6 +366,26 @@ SMDH_HOMEMENU* getSystemIconList(u64* tids, u64 count) {
     }
 
     return icons;
+}
+
+ENTRY_ACTIVITY* getActivityEntryList(Handle* source) {
+    Result res;
+    u64 filesize = 0;
+
+    res = FSFILE_GetSize(*source, &filesize);
+    printf("Retrieving savefile size... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    ENTRY_ACTIVITY* data = new ENTRY_ACTIVITY[ENTRY_ACTIVITY_COUNT];
+
+    for (u64 i = 0; i < ENTRY_ACTIVITY_COUNT; i++) {
+        u32 rsize = 0;
+        res = FSFILE_Read(*source, &rsize, ENTRY_ACTIVITY_START + i*sizeof(ENTRY_ACTIVITY), &data[i], sizeof(ENTRY_ACTIVITY));
+        printf("\x1b[15;0HReading entry data %llu... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+        if(R_FAILED(res) || rsize < sizeof(ENTRY_ACTIVITY)) break;
+        gfxEndFrame();
+    }
+
+    return data;
 }
 
 FS_Archive openExtdata(u32* UniqueID, FS_ArchiveID archiveId) {
@@ -359,6 +427,17 @@ FS_Archive openSystemSavedata(u32* UniqueID) {
     return archive;
 }
 
+void clearPlayHistory(bool wait = true) {
+    Result res = PTMSYSM_ClearPlayHistory();
+    if (R_FAILED(res)) promptError("Clear Step History", "Failed to clear play history.");
+    printf("Clearing play history... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    if (wait) {
+        printf("Press any key to continue.\n");
+        waitKey();
+    }
+}
+
 void clearStepHistory(bool wait = true) {
     Result res = PTMSYSM_ClearStepHistory();
     if (R_FAILED(res)) promptError("Clear Step History", "Failed to clear step history.");
@@ -388,15 +467,274 @@ void clearSoftwareLibrary(bool wait = true) {
     }
 }
 
-void clearPlayHistory(bool wait = true) {
-    Result res = PTMSYSM_ClearPlayHistory();
-    if (R_FAILED(res)) promptError("Clear Step History", "Failed to clear play history.");
-    printf("Clearing play history... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+void editLibraryEntry(ENTRY_ACTIVITY* library, u16 selected) {
+    if (library[selected].titleid == 0xFFFFFFFFFFFFFFFF) return; // TODO: titleid editing
+    u8 task = 0, option = 0, update = true;
+    DATE firstPlayed = getDate(2451545 + library[selected].firstPlayed);
+    DATE lastPlayed = getDate(2451545 + library[selected].lastPlayed);
+    consoleClear();
+    while(aptMainLoop()) {
+        hidScanInput();
+        u32 kDown = hidKeysDown();
 
-    if (wait) {
-        printf("Press any key to continue.\n");
-        waitKey();
+        if (kDown & KEY_DOWN) {
+            switch(task) {
+                case 0: {
+                    if (option < 3) {
+                        printf("\x1b[%u;0H ", ++option);
+                    } else {
+                        printf("\x1b[%u;0H ", option+1);
+                        option = 0;
+                    }
+                } break;
+                case  1: { // Edit play count
+                    if (library[selected].timesPlayed < 0xFFFF) library[selected].timesPlayed++;
+                    else library[selected].timesPlayed = 0;
+                } break;
+                case  3: { // Edit hours played
+                    if (library[selected].totalPlayed < 3600*4660) library[selected].totalPlayed+=3600;
+                    else library[selected].totalPlayed -= 3600*4660;
+                } break;
+                case  4: { // Edit minutes played
+                    if (library[selected].totalPlayed < 3600*4660+59*60) library[selected].totalPlayed+=60;
+                    else library[selected].totalPlayed -= 3600*4660+59*60;
+                } break;
+                case  5: { // Edit seconds played
+                    if (library[selected].totalPlayed < 3600*4660+59*60+59) library[selected].totalPlayed++;
+                    else library[selected].totalPlayed -= 3600*4660+59*60+59;
+                } break;
+                case  6: { // Edit first played month
+                    if (firstPlayed.month < 12) firstPlayed.month++;
+                    else firstPlayed.month = 1;
+                } break;
+                case  7: { // Edit first played day
+                    u8 d;
+                    switch(firstPlayed.month) {
+                        case 2: d = 28 + (firstPlayed.year % 4 == 0); break;
+                        case 1: case 3: case 5: case 7: case 8: case 10: case 12: d = 31; break;
+                        default: d = 30; break;
+                    } if (firstPlayed.day < d) {
+                        firstPlayed.day++;
+                    } else firstPlayed.day = 0;
+                } break;
+                case  8: { // Edit first played year
+                    if (firstPlayed.year < 2179) firstPlayed.year++;
+                    else firstPlayed.year = 2000;
+                } break;
+                case  9: { // Edit last played month
+                    if (lastPlayed.month < 12) lastPlayed.month++;
+                    else lastPlayed.month = 1;
+                } break;
+                case 10: { // Edit last played day
+                    u8 d;
+                    switch(lastPlayed.month) {
+                        case 2: d = 28 + (lastPlayed.year % 4 == 0); break;
+                        case 1: case 3: case 5: case 7: case 8: case 10: case 12: d = 31; break;
+                        default: d = 30; break;
+                    } if (lastPlayed.day < d) {
+                        lastPlayed.day++;
+                    } else lastPlayed.day = 0;
+                } break;
+                case 11: { // Edit last played year
+                    if (lastPlayed.year < 2179) lastPlayed.year++;
+                    else lastPlayed.year = 2000;
+                } break;
+            }
+        } else if (kDown & KEY_UP) {
+            switch(task) {
+                case 0: {
+                    if (option > 0) {
+                        printf("\x1b[%u;0H ", 1+(option--));
+                    } else {
+                        printf("\x1b[%u;0H ", option+1);
+                        option = 3;
+                    }
+                } break;
+                case  1: { // Edit play count
+                    if (library[selected].timesPlayed > 0) library[selected].timesPlayed--;
+                    else library[selected].timesPlayed = 0xFFFF;
+                } break;
+                case  3: { // Edit hours played
+                    if (library[selected].totalPlayed > 3600) library[selected].totalPlayed-=3600;
+                    else library[selected].totalPlayed += 3600*4660;
+                } break;
+                case  4: { // Edit minutes played
+                    if (library[selected].totalPlayed > 60) library[selected].totalPlayed-=60;
+                    else library[selected].totalPlayed += 60*60;
+                } break;
+                case  5: { // Edit seconds played
+                    if (library[selected].totalPlayed > 0) library[selected].totalPlayed--;
+                    else library[selected].totalPlayed += 60;
+                } break;
+                case  6: { // Edit first played month
+                    if (firstPlayed.month > 1) firstPlayed.month--;
+                    else firstPlayed.month = 12;
+                } break;
+                case  7: { // Edit first played day
+                    if (firstPlayed.day > 1) {
+                        firstPlayed.day--;
+                    } else switch(firstPlayed.month) {
+                        case 2: firstPlayed.day = 28 + (firstPlayed.year % 4 == 0); break;
+                        case 1: case 3: case 5: case 7: case 8: case 10: case 12: firstPlayed.day = 31; break;
+                        default: firstPlayed.day = 30; break;
+                    }
+                } break;
+                case  8: { // Edit first played year
+                    if (firstPlayed.year > 2000) firstPlayed.year--;
+                    else firstPlayed.year = 2179;
+                } break;
+                case  9: { // Edit last played month
+                    if (lastPlayed.month > 1) lastPlayed.month--;
+                    else lastPlayed.month = 12;
+                } break;
+                case 10: { // Edit last played day
+                    if (lastPlayed.day > 1) {
+                        lastPlayed.day--;
+                    } else switch(lastPlayed.month) {
+                        case 2: lastPlayed.day = 28 + (lastPlayed.year % 4 == 0); break;
+                        case 1: case 3: case 5: case 7: case 8: case 10: case 12: lastPlayed.day = 31; break;
+                        default: lastPlayed.day = 30; break;
+                    }
+                } break;
+                case 11: { // Edit last played year
+                    if (lastPlayed.year > 2000) lastPlayed.year--;
+                    else lastPlayed.year = 2179;
+                } break;
+            }
+        } else if (task > 2) {
+            if (kDown & KEY_LEFT) {
+                if (task % 3 > 0) task--;
+            } else if (kDown & KEY_RIGHT) {
+                if (task % 3 < 2) task++;
+            }
+        }
+
+        if (kDown & KEY_A) {
+            if (task==0) task = 3*option + (option==0);
+            else task = 0;
+        } else if (kDown & KEY_B) {
+            if (task > 0) task = 0;
+            else break;
+        }
+
+        if (update || kDown) {
+            printf("\x1b[0;0H%#llx", library[selected].titleid);
+            printf("\x1b[1;2H\x1b[0mTimes Played: \x1b[%sm%05u", (task==1) ? "30;47" : "0", library[selected].timesPlayed);
+            printf("\x1b[2;2H\x1b[0mTotal Play Time: \x1b[%sm%04lu\x1b[0m:\x1b[%sm%02lu\x1b[0m:\x1b[%sm%02lu", (task==3) ? "30;47" : "0", library[selected].totalPlayed / 3600, (task==4) ? "30;47" : "0", (library[selected].totalPlayed / 60) % 60, (task==5) ? "30;47" : "0", library[selected].totalPlayed % 60);
+            printf("\x1b[3;2H\x1b[0mFirst Played: \x1b[%sm%02u\x1b[0m/\x1b[%sm%02u\x1b[0m/\x1b[%sm%04u", (task==6) ? "30;47" : "0", firstPlayed.month, (task==7) ? "30;47" : "0", firstPlayed.day, (task==8) ? "30;47" : "0", firstPlayed.year);
+            printf("\x1b[4;2H\x1b[0mLast Played: \x1b[%sm%02u\x1b[0m/\x1b[%sm%02u\x1b[0m/\x1b[%sm%04u", (task==9) ? "30;47" : "0", lastPlayed.month, (task==10) ? "30;47" : "0", lastPlayed.day, (task==11) ? "30;47" : "0", lastPlayed.year);
+            u32 average = library[selected].totalPlayed / library[selected].timesPlayed;
+            printf("\x1b[6;2H\x1b[0mAverage Play Time: %04lu:%02lu:%02lu", average / 3600, (average / 60) % 60, average % 60);
+            printf("\x1b[%u;0H>", 1 + option);
+            update = false;
+        }
+
+        gfxEndFrame();
     }
+    library[selected].firstPlayed = getJulianDay(&firstPlayed) - 2451545;
+    library[selected].lastPlayed = getJulianDay(&lastPlayed) - 2451545;
+}
+
+void editSoftwareLibrary() {
+    Result res;
+    Handle pld;
+    Handle idb;
+    Handle idbt;
+
+    u32 activitylogID[3] = {0x00020202, 0x00020212, 0x00020222};
+    FS_Archive syssave = openSystemSavedata(activitylogID);
+
+    u32 sharedID = 0xF000000B;
+    FS_Archive shared = openExtdata(&sharedID, ARCHIVE_SHARED_EXTDATA);
+
+    res = FSUSER_OpenFile(&idb, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idb.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
+    printf("Opening file \"idb.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    res = FSUSER_OpenFile(&idbt, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idbt.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
+    printf("Opening file \"idbt.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    res = FSUSER_OpenFile(&pld, syssave, (FS_Path)fsMakePath(PATH_ASCII, "/pld.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
+    printf("Opening file \"pld.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    ENTRY_ACTIVITY* library = getActivityEntryList(&pld);
+    ENTRY_DATA* entries = getSharedEntryList(&idbt);
+    SMDH_SHARED* icons = getSharedIconList(&idb);
+    u64* tids = new u64[ENTRY_SHARED_COUNT];
+    for (int i = 0; i < ENTRY_SHARED_COUNT; i++) tids[i] = entries[i].titleid;
+
+    u8 selected = 0, scroll = 0, update = true;
+
+    while(aptMainLoop()) {
+        hidScanInput();
+        u32 kDown = hidKeysDown();
+
+        if (kDown & KEY_DOWN) {
+            if (selected<14) selected++;
+            else if ((selected + scroll) < (ENTRY_ACTIVITY_COUNT - 15)) scroll++;
+            else if (selected<28) selected++;
+            else { selected = 0; scroll = 0; }
+        } else if (kDown & KEY_UP) {
+            if (selected>13) selected--;
+            else if (scroll>0) scroll--;
+            else if (selected>0) selected--;
+            else { selected = 28; scroll = ENTRY_ACTIVITY_COUNT - 29; }
+        }
+
+        if (kDown & KEY_A) {
+            editLibraryEntry(library, selected+scroll);
+        } else if (kDown & KEY_X) {
+            memset(&library[selected+scroll], 0xFF, sizeof(ENTRY_ACTIVITY));
+        } else if (kDown & KEY_Y) {
+            if (library[selected+scroll].flags < 4) library[selected+scroll].flags <<= 1;
+            else library[selected+scroll].flags = 1;
+        } else if (kDown & KEY_B) break;
+
+        if (update || kDown) {
+            consoleClear();
+            printf("\x1b[0;0HSOFTWARE LIBRARY:");
+            u32 i = 0;
+            while (i < ENTRY_ACTIVITY_COUNT) {
+                if (i > 28) break;
+                switch (library[i+scroll].flags) {
+                    case 0x0000: case 0x0001: printf("\x1b[31m"); break; // Set color to red if unlisted
+                    case 0x0002: case 0x0006: printf("\x1b[32m"); break; // Set color to green if listed
+                    case 0x0004: case 0x0008: printf("\x1b[33m"); break; // Set color to yellow if pending
+                    default: printf("\x1b[0m"); break;                   // Set color to white if unknown
+                }
+                char title[32];
+                utf2ascii(title, icons[std::distance(tids, std::find(tids, tids + ENTRY_SHARED_COUNT, library[i+scroll].titleid))].titles[1].shortDescription);
+                printf("\x1b[%lu;0H  %.22s\x1b[%lu;25H%#llx", 1 + i, title, 1 + i, library[i+scroll].titleid);
+                i++;
+            }
+            printf("\x1b[%u;0H\x1b[0m>", 1 + selected);
+            update = false;
+        }
+
+        gfxEndFrame();
+    }
+
+    if (promptConfirm("Edit Software Library", "Save changes?")) {
+        for (u64 i = 0; i < ENTRY_ACTIVITY_COUNT; i++) {
+            u32 wsize = 0;
+            res = FSFILE_Write(pld, &wsize, ENTRY_ACTIVITY_START + i*sizeof(ENTRY_ACTIVITY), &library[i], sizeof(ENTRY_ACTIVITY), 0);
+            printf("\x1b[15;0HWriting entry data %llu to file... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
+            if(R_FAILED(res) || wsize < sizeof(ENTRY_ACTIVITY)) break;
+            gfxEndFrame();
+        }
+    }
+
+    delete[] library;
+    delete[] entries;
+    delete[] icons;
+    delete[] tids;
+
+    FSFILE_Close(pld);
+    FSFILE_Close(idb);
+    FSFILE_Close(idbt);
+    FSUSER_ControlArchive(syssave, ARCHIVE_ACTION_COMMIT_SAVE_DATA, NULL, 0, NULL, 0);
+    FSUSER_CloseArchive(syssave);
+    FSUSER_CloseArchive(shared);
+
+    printf("Press any key to continue.\n");
+    waitKey();
 }
 
 void resetDemoPlayCount(bool wait = true) {
@@ -457,6 +795,7 @@ bool backupSharedIconCache(bool wait = true) {
     FSFILE_Read(idbt, NULL, 0x0, buffer2, fsize2);
     FSFILE_Close(idb);
     FSFILE_Close(idbt);
+    FSUSER_CloseArchive(shared);
 
     success = ((fwrite(buffer1, 1, fsize1, backup1)==fsize1) && (fwrite(buffer2, 1, fsize2, backup2)==fsize2));
     printf("%s.\n", success ? "OK" : "ERROR");
@@ -495,16 +834,9 @@ void updateSharedIconCache() {
     SMDH_SHARED* icons = getSharedIconList(&idb);
     SMDH_HOMEMENU* newicons = getSystemIconList(tids, titlecount);
 
-    bool success = false;
+    bool success = dobackup ? backupSharedIconCache(false) : true;
 
-    if (dobackup) {
-        success = backupSharedIconCache(false);
-    } else {
-        printf("Skipping icon data backup.\n");
-        success = true;
-    }
-
-    if ((success) || (promptConfirm("Update Shared Icon Cache", "Couldn't backup icon data. Continue anyway?"))) {
+    if (success || promptConfirm("Update Shared Icon Cache", "Couldn't backup icon data. Continue anyway?")) {
         for (u64 i = 0; i < ENTRY_SHARED_COUNT; i++) {
             for (u64 pos = 0; pos < ((titlecount & 0xFFFFFFFF) + (titlecount >> 32)); pos++) {
                 if (((tids[pos] >> 32) & 0x8000)==0 && tids[pos]==entries[i].titleid) {
@@ -526,6 +858,7 @@ void updateSharedIconCache() {
     delete[] entries;
     delete[] icons;
     delete[] newicons;
+    delete[] tids;
 
     FSFILE_Close(idb);
     FSFILE_Close(idbt);
@@ -576,6 +909,7 @@ void restoreSharedIconCache() {
         fclose(backup2);
         FSFILE_Close(idb);
         FSFILE_Close(idbt);
+        FSUSER_CloseArchive(shared);
     }
 
     printf("Press any key to continue.\n");
@@ -635,6 +969,7 @@ bool backupHomemenuIconCache(bool wait = true) {
     FSFILE_Read(cache, NULL, 0x0, buffer2, fsize2);
     FSFILE_Close(cached);
     FSFILE_Close(cache);
+    FSUSER_CloseArchive(hmextdata);
 
     success = ((fwrite(buffer1, 1, fsize1, backup1)==fsize1) && (fwrite(buffer2, 1, fsize2, backup2)==fsize2));
     printf("%s.\n", success ? "OK" : "ERROR");
@@ -673,16 +1008,9 @@ void updateHomemenuIconCache() {
     SMDH_HOMEMENU* icons = getHomemenuIconList(&cached);
     SMDH_HOMEMENU* newicons = getSystemIconList(tids, titlecount);
 
-    bool success = false;
+    bool success = dobackup ? backupHomemenuIconCache(false) : true;
 
-    if (dobackup) {
-        success = backupHomemenuIconCache(false);
-    } else {
-        printf("Skipping icon data backup.\n");
-        success = true;
-    }
-
-    if ((success) || (promptConfirm("Update HOME Menu Icon Cache", "Couldn't backup icon data. Continue anyway?"))) {
+    if (success || promptConfirm("Update HOME Menu Icon Cache", "Couldn't backup icon data. Continue anyway?")) {
         for (u64 i = 0; i < ENTRY_HOMEMENU_COUNT; i++) {
             for (u64 pos = 0; pos < ((titlecount & 0xFFFFFFFF) + (titlecount >> 32)); pos++) {
                 if (((tids[pos] >> 32) & 0x8000)==0 && tids[pos]==entries[i].titleid) {
@@ -702,6 +1030,7 @@ void updateHomemenuIconCache() {
     delete[] entries;
     delete[] icons;
     delete[] newicons;
+    delete[] tids;
 
     FSFILE_Close(cache);
     FSFILE_Close(cached);
@@ -755,6 +1084,7 @@ void restoreHomemenuIconCache() {
         fclose(backup2);
         FSFILE_Close(cached);
         FSFILE_Close(cache);
+        FSUSER_CloseArchive(hmextdata);
     }
 
     printf("Press any key to continue.\n");
@@ -996,7 +1326,7 @@ int main() {
             "Clear play history.",
             "Clear step history.",
             "Clear software library.",
-            "[COMING SOON]" // "Edit software library."
+            "Edit software library."
         },
         {
             "[COMING SOON]", // "Clear Friends List.",
@@ -1033,12 +1363,13 @@ int main() {
     u8 option[SUBMENU_COUNT] = {0};
     u8 submenu = 0;
 
-    if (kHeld & KEY_L) goBerserk();
-    else while (aptMainLoop()) {
+    if (kHeld & KEY_L) {
+        goBerserk();
+    } else while (aptMainLoop()) {
         printf("\x1b[0;0H\x1b[30;47m%-50s", " ");
-        printf("\x1b[0;19H%s\x1b[0;0m", "Cthulhu v1.1");
+        printf("\x1b[0;18HCthulhu v%01u.%01u.%01u\x1b[0;0m", VERSION_MAJOR, VERSION_MINOR, VERSION_MICRO);
 
-        for (u8 i = 0; i <= menucount[submenu]; i++) {
+        for (u8 i = 0; i<=menucount[submenu]; i++) {
             if (i < menucount[submenu]) printf("\x1b[%u;2H%-48s", i+1, menuentries[submenu][i]);
             else if (submenu > 0) printf("\x1b[%u;2H%-48s", i+1, "Go back.");
         } printf("\x1b[%u;0H>", option[submenu] + 1);
@@ -1073,6 +1404,7 @@ int main() {
                 case 10: if (promptConfirm("Clear Play History", "This can't be undone without a backup. Are you sure?")) clearPlayHistory(); break;
                 case 11: if (promptConfirm("Clear Step History", "This can't be undone without a backup. Are you sure?")) clearStepHistory(); break;
                 case 12: if (promptConfirm("Clear Software Library", "This can't be undone without a backup. Are you sure?")) clearSoftwareLibrary(); break;
+                case 13: consoleClear(); editSoftwareLibrary(); break;
 
                 case 30: if (promptConfirm("Clear Shared Icon Cache", "This will also clear your software library. Are you sure?")) clearSharedIconCache(); break;
                 case 31: if (promptConfirm("Update Shared Icon Cache", "Update shared cached icon data?")) updateSharedIconCache(); break;
@@ -1095,7 +1427,7 @@ int main() {
                 case 61: if (promptConfirm("Reset eShop BGM", "Restore the original Nintendo eShop music?")) resetEShopBGM(); break;
                 case 62: if (promptConfirm("Replace eShop BGM", "Replace the current Nintendo eShop music?")) replaceEShopBGM(); break;
 
-                default: submenu = 0; consoleClear(); break;
+                default: consoleClear(); submenu = 0; break;
             }
         } else if ((kDown & KEY_B) && (submenu > 0)) {
             submenu = 0;
