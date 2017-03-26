@@ -16,7 +16,7 @@
 #define MAX_OPTIONS_PER_SUBMENU 10
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 2
+#define VERSION_MINOR 3
 #define VERSION_MICRO 0
 
 bool dobackup = true;
@@ -1271,6 +1271,50 @@ void replaceEShopBGM() {
     waitKey();
 }
 
+void changeAcceptedEULAVersion() {
+    Result res;
+    u8 eulaData[4];
+    u8 index = 0;
+    res = CFGU_GetConfigInfoBlk2(4, 0xD0000, eulaData);
+
+    printf("Fetching EULA data... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+    if (R_FAILED(res)) {
+        promptError("Change Accepted EULA Version", "Failed to get EULA data.");
+        return;
+    }
+    consoleClear();
+
+    while(aptMainLoop()) {
+        printf("\x1b[0;0HPress LEFT, RIGHT or SELECT to select byte.\n");
+        printf("Press UP or DOWN to modify selected byte.\n");
+        printf("Press X for 0x0000 and Y for 0xFFFF.\n");
+        printf("Press A or B to save and return.\n\n");
+        printf("Current accepted EULA version: \x1b[%sm%02X\x1b[0m.\x1b[%sm%02X\x1b[0m\n", (index==1) ? "30;47" : "0", eulaData[1], (index==0) ? "30;47" : "0", eulaData[0]);
+
+        hidScanInput();
+        u32 kDown = hidKeysDown();
+
+        if (kDown & KEY_LEFT || kDown & KEY_RIGHT || kDown & KEY_SELECT) index ^= 1;
+        if (kDown & KEY_UP) eulaData[index]--;
+        if (kDown & KEY_DOWN) eulaData[index]++;
+
+        if (kDown & KEY_Y) *((u16*)eulaData) = 0xFFFF;
+        if (kDown & KEY_X) *((u16*)eulaData) = 0x0000;
+
+        if ((kDown & KEY_A || kDown & KEY_B) && promptConfirm("Change Accepted EULA Version", "Exit now?")) {
+            if (promptConfirm("Change Accepted EULA Version", "Save Changes?")) {
+                res = CFG_SetConfigInfoBlk8(4, 0xD0000, eulaData);
+                printf("Setting new EULA version... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+                res = CFG_UpdateConfigNANDSavegame();
+                printf("Updating Config savegame... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+            } break;
+        }
+    }
+
+    printf("Press any key to continue.\n");
+    waitKey();
+}
+
 void goBerserk() {
     if (!promptConfirm("Go Berserk and Clear Everything", "CLEAR ALL LOGS AND CACHED ICON DATA?")) return;
     if (!promptConfirm("Go Berserk and Clear Everything", "ARE YOU REALLY SURE?")) return;
@@ -1311,7 +1355,7 @@ int main() {
     hidScanInput();
     u32 kHeld = hidKeysHeld();
 
-    u8 menucount[SUBMENU_COUNT] = {6, 4, 3, 4, 4, 5, 3};
+    u8 menucount[SUBMENU_COUNT] = {6, 4, 3, 4, 4, 5, 4};
     const char* menuentries[SUBMENU_COUNT][MAX_OPTIONS_PER_SUBMENU] = 
     {
         {
@@ -1356,7 +1400,8 @@ int main() {
         {
             "Clear Game Notes.",
             "Reset eShop BGM.",
-            "Replace eShop BGM."
+            "Replace eShop BGM.",
+            "Change accepted EULA version."
         }
     };
 
@@ -1426,6 +1471,7 @@ int main() {
                 case 60: if (promptConfirm("Clear Game Notes", "Delete all of your game notes?")) clearGameNotes(); break;
                 case 61: if (promptConfirm("Reset eShop BGM", "Restore the original Nintendo eShop music?")) resetEShopBGM(); break;
                 case 62: if (promptConfirm("Replace eShop BGM", "Replace the current Nintendo eShop music?")) replaceEShopBGM(); break;
+                case 63: consoleClear(); changeAcceptedEULAVersion(); break;
 
                 default: consoleClear(); submenu = 0; break;
             }
