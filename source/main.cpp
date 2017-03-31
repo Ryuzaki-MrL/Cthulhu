@@ -1315,19 +1315,6 @@ void changeAcceptedEULAVersion() {
     waitKey();
 }
 
-void goBerserk() {
-    if (!promptConfirm("Go Berserk and Clear Everything", "CLEAR ALL LOGS AND CACHED ICON DATA?")) return;
-    if (!promptConfirm("Go Berserk and Clear Everything", "ARE YOU REALLY SURE?")) return;
-    clearStepHistory(false);
-    clearPlayHistory(false);
-    clearSharedIconCache(false);
-    clearHomemenuIconCache(false);
-    removeSoftwareUpdateNag(false);
-    printf("Rebooting...\n");
-    svcSleepThread(2000000000);
-    APT_HardwareResetAsync();
-}
-
 void moveDataFolder() {
     rename("/3ds/cachetool/idb.bak", "/3ds/data/cthulhu/idb.bak");
     rename("/3ds/cachetool/idbt.bak", "/3ds/data/cthulhu/idbt.bak");
@@ -1351,9 +1338,6 @@ int main() {
     mkdir("/3ds/data/cthulhu", 0777);
     char oldpath[] = "/3ds/cachetool";
     if (pathExists(oldpath)) moveDataFolder();
-
-    hidScanInput();
-    u32 kHeld = hidKeysHeld();
 
     u8 menucount[SUBMENU_COUNT] = {6, 4, 3, 4, 4, 5, 4};
     const char* menuentries[SUBMENU_COUNT][MAX_OPTIONS_PER_SUBMENU] = 
@@ -1408,9 +1392,7 @@ int main() {
     u8 option[SUBMENU_COUNT] = {0};
     u8 submenu = 0;
 
-    if (kHeld & KEY_L) {
-        goBerserk();
-    } else while (aptMainLoop()) {
+    while (aptMainLoop()) {
         printf("\x1b[0;0H\x1b[30;47m%-50s", " ");
         printf("\x1b[0;18HCthulhu v%01u.%01u.%01u\x1b[0;0m", VERSION_MAJOR, VERSION_MINOR, VERSION_MICRO);
 
@@ -1493,5 +1475,6 @@ int main() {
     svcCloseHandle(ptmSysmHandle);
     // svcCloseHandle(amHandle);
     gfxExit();
+
     return 0;
 }
