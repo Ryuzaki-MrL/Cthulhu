@@ -395,7 +395,7 @@ FS_Archive openExtdata(u32* UniqueID, FS_ArchiveID archiveId) {
 
     FS_Archive archive;
     FS_MediaType media = (archiveId==ARCHIVE_SHARED_EXTDATA) ? MEDIATYPE_NAND : MEDIATYPE_SD;
-    u32 low = ((archiveId==ARCHIVE_SHARED_EXTDATA) || (region > 2)) ? UniqueID[0] : UniqueID[region];
+    u32 low = (archiveId==ARCHIVE_SHARED_EXTDATA) ? *UniqueID : UniqueID[region];
     u32 high = (archiveId==ARCHIVE_SHARED_EXTDATA) ? 0x00048000 : 0x00000000;
     u32 archpath[3] = {media, low, high};
     FS_Path fspath = {PATH_BINARY, 12, archpath};
@@ -414,7 +414,7 @@ FS_Archive openSystemSavedata(u32* UniqueID) {
     printf("Retrieving console's region... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     FS_Archive archive;
-    u32 low = (region > 2) ? UniqueID[0] : UniqueID[region];
+    u32 low = UniqueID[region];
     u32 archpath[2] = {MEDIATYPE_NAND, low};
 
     FS_Path fspath = {PATH_BINARY, 8, archpath};
@@ -450,7 +450,7 @@ void clearStepHistory(bool wait = true) {
 void clearSoftwareLibrary(bool wait = true) {
     Result res;
 
-    u32 activitylogID[3] = {0x00020202, 0x00020212, 0x00020222};
+    u32 activitylogID[] = {0x00020202, 0x00020212, 0x00020222, 0x00020222, 0x00020262, 0x00020272, 0x00020282};
     FS_Archive syssave = openSystemSavedata(activitylogID);
 
     res = FSUSER_DeleteFile(syssave, (FS_Path)fsMakePath(PATH_ASCII, "/pld.dat"));
@@ -640,7 +640,7 @@ void editSoftwareLibrary() {
     Handle idb;
     Handle idbt;
 
-    u32 activitylogID[3] = {0x00020202, 0x00020212, 0x00020222};
+    u32 activitylogID[] = {0x00020202, 0x00020212, 0x00020222, 0x00020222, 0x00020262, 0x00020272, 0x00020282};
     FS_Archive syssave = openSystemSavedata(activitylogID);
 
     u32 sharedID = 0xF000000B;
@@ -917,7 +917,7 @@ void restoreSharedIconCache() {
 
 void clearHomemenuIconCache(bool wait = true) {
     Result res;
-    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    u32 homemenuID[] = {0x00000082, 0x0000008f, 0x00000098, 0x00000098, 0x000000a1, 0x000000a9, 0x000000b1};
     FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
     res = FSUSER_DeleteFile(hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/Cache.dat"));
@@ -946,7 +946,7 @@ bool backupHomemenuIconCache(bool wait = true) {
     Handle cache;
     Handle cached;
     bool success = false;
-    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    u32 homemenuID[] = {0x00000082, 0x0000008f, 0x00000098, 0x00000098, 0x000000a1, 0x000000a9, 0x000000b1};
     FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
     res = FSUSER_OpenFile(&cache, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/Cache.dat"), FS_OPEN_READ, 0);
@@ -992,7 +992,7 @@ void updateHomemenuIconCache() {
     Result res;
     Handle cache;
     Handle cached;
-    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    u32 homemenuID[] = {0x00000082, 0x0000008f, 0x00000098, 0x00000098, 0x000000a1, 0x000000a9, 0x000000b1};
     FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
     res = FSUSER_OpenFile(&cache, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/Cache.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
@@ -1043,7 +1043,7 @@ void restoreHomemenuIconCache() {
     Result res;
     Handle cached;
     Handle cache;
-    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    u32 homemenuID[] = {0x00000082, 0x0000008f, 0x00000098, 0x00000098, 0x000000a1, 0x000000a9, 0x000000b1};
     FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
     FILE* backup1 = fopen("/3ds/data/cthulhu/CacheD.bak", "rb");
@@ -1093,7 +1093,7 @@ void restoreHomemenuIconCache() {
 void unpackRepackHomemenuSoftware(bool repack) {
     Result res;
     Handle save;
-    u32 homemenuID[3] = {0x00000082, 0x0000008f, 0x00000098};
+    u32 homemenuID[] = {0x00000082, 0x0000008f, 0x00000098, 0x00000098, 0x000000a1, 0x000000a9, 0x000000b1};
     FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
     res = FSUSER_OpenFile(&save, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/SaveData.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
@@ -1147,7 +1147,7 @@ void resetFolderCount() {
     Result res;
     Handle save;
 
-    u32 homemenuID[3] = {0x00020082, 0x0002008f, 0x00020098};
+    u32 homemenuID[] = {0x00020082, 0x0002008f, 0x00020098, 0x00020098, 0x000200a1, 0x000200a9, 0x000200b1};
     FS_Archive syssave = openSystemSavedata(homemenuID);
 
     res = FSUSER_OpenFile(&save, syssave, (FS_Path)fsMakePath(PATH_ASCII, "/Launcher.dat"), FS_OPEN_WRITE, 0);
@@ -1169,7 +1169,7 @@ void clearGameNotes() {
     Result res;
     char path[16];
 
-    u32 gamenotesID[3] = {0x00020087, 0x00020093, 0x0002009C};
+    u32 gamenotesID[] = {0x00020087, 0x00020093, 0x0002009c, 0x0002009c, 0x000200a5, 0x000200ad, 0x000200b5};
     FS_Archive syssave = openSystemSavedata(gamenotesID);
 
     for (int i = 0; i < 16; i++) {
@@ -1191,7 +1191,7 @@ void clearGameNotes() {
 
 void resetEShopBGM() {
     Result res;
-    u32 eshopID[3] = {0x00000209, 0x00000219, 0x00000229};
+    u32 eshopID[] = {0x00000209, 0x00000219, 0x00000229, 0x00000229, 0x00000269, 0x00000279, 0x00000289};
     FS_Archive eshopext = openExtdata(eshopID, ARCHIVE_EXTDATA);
 
     res = FSUSER_DeleteFile(eshopext, (FS_Path)fsMakePath(PATH_ASCII, "/boss_bgm1"));
@@ -1206,7 +1206,7 @@ void resetEShopBGM() {
 
 void replaceEShopBGM() {
     Result res;
-    u32 eshopID[3] = {0x00000209, 0x00000219, 0x00000229};
+    u32 eshopID[] = {0x00000209, 0x00000219, 0x00000229, 0x00000229, 0x00000269, 0x00000279, 0x00000289};
     FS_Archive eshopext = openExtdata(eshopID, ARCHIVE_EXTDATA);
 
     FILE* newbgm = fopen("/3ds/data/cthulhu/boss_bgm.aac", "rb"); // getOpenFilename("/3ds/data/cthulhu");
@@ -1315,8 +1315,15 @@ void changeAcceptedEULAVersion() {
 }
 
 void toggleNSMenu() {
+    Result res;
+    u8 region = 0;
+
+    res = CFGU_SecureInfoGetRegion(&region);
+    printf("Retrieving console's region... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
     u8 titleID[0x8];
-    u8 homemenuID[] = {0x02, 0x98, 0x00, 0x00, 0x30, 0x00, 0x04, 0x00};
+    u8 homemenuRegion[] = {0x82, 0x8f, 0x98, 0x98, 0xa1, 0xa9, 0xb1};
+    u8 homemenuID[] = {0x02, homemenuRegion[region], 0x00, 0x00, 0x30, 0x00, 0x04, 0x00};
     u8 testmenuID[] = {0x02, 0x81, 0x00, 0x00, 0x30, 0x00, 0x04, 0x00};
 
     CFG_GetConfigInfoBlk4(0x8, 0x00110001, titleID);
