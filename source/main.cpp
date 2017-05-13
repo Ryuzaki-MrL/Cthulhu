@@ -457,6 +457,7 @@ void clearSoftwareLibrary(bool wait = true) {
     if (R_FAILED(res)) promptError("Clear Software Library", "Failed to delete software library data.");
     printf("Deleting file \"pld.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
+    FSUSER_ControlArchive(syssave, ARCHIVE_ACTION_COMMIT_SAVE_DATA, NULL, 0, NULL, 0);
     FSUSER_CloseArchive(syssave);
 
     if (wait) {
