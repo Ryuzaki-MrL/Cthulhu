@@ -26,6 +26,7 @@ Current Features:
 - Replace eShop BGM: replaces the current eShop music with a custom one.
 - Restore eShop BGM: restores the default current eShop music.
 - Change accepted EULA version: useful for allowing out-of-region online play (when set to FF.FF).
+- Toggle HOME/Test menu: changes which menu the 3DS will boot on startup (Test Menu needs UNITINFO patch to work).
 
 Future Features:
 - Misc. features seen on dev unit software.
