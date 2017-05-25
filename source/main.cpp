@@ -10,18 +10,18 @@
 #define ENTRY_HOMEMENU_COUNT 0x168
 #define ENTRY_LIBRARY_START 0xC3510
 #define ENTRY_LIBRARY_COUNT 0x100
+#define ENTRY_HISTORY_COUNT 0x11D28
 
 #define SUBMENU_COUNT 7
 #define MAX_OPTIONS_PER_SUBMENU 10
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 3
-#define VERSION_MICRO 0
+#define VERSION_MICRO 1
 
 bool dobackup = true;
 
 Handle ptmSysmHandle;
-Handle amHandle;
 
 typedef struct {
     u16 shortDescription[0x40];
@@ -84,6 +84,11 @@ typedef struct {
 } ENTRY_LIBRARY;
 
 typedef struct {
+    u64 titleid;
+    u32 timestamp;
+} ENTRY_HISTORY;
+
+typedef struct {
     u16 year;
     u8 month;
     u8 day;
@@ -91,62 +96,56 @@ typedef struct {
 
 Result PTMSYSM_FormatSavedata(void)
 {
-	Result ret;
-	u32 *cmdbuf = getThreadCommandBuffer();
+    Result ret;
+    u32 *cmdbuf = getThreadCommandBuffer();
 
-	cmdbuf[0] = IPC_MakeHeader(0x813,0,0); // 0x8130000
+    cmdbuf[0] = IPC_MakeHeader(0x813,0,0); // 0x8130000
 
-	if(R_FAILED(ret = svcSendSyncRequest(ptmSysmHandle)))return ret;
+    if(R_FAILED(ret = svcSendSyncRequest(ptmSysmHandle)))return ret;
 
-	return (Result)cmdbuf[1];
+    return (Result)cmdbuf[1];
 }
 
 Result PTMSYSM_ClearStepHistory(void)
 {
-	Result ret;
-	u32 *cmdbuf = getThreadCommandBuffer();
+    Result ret;
+    u32 *cmdbuf = getThreadCommandBuffer();
 
-	cmdbuf[0] = IPC_MakeHeader(0x805,0,0); // 0x8050000
+    cmdbuf[0] = IPC_MakeHeader(0x805,0,0); // 0x8050000
 
-	if(R_FAILED(ret = svcSendSyncRequest(ptmSysmHandle)))return ret;
+    if(R_FAILED(ret = svcSendSyncRequest(ptmSysmHandle)))return ret;
 
-	return (Result)cmdbuf[1];
+    return (Result)cmdbuf[1];
 }
 
 Result PTMSYSM_ClearPlayHistory(void)
 {
-	Result ret;
-	u32 *cmdbuf = getThreadCommandBuffer();
+    Result ret;
+    u32 *cmdbuf = getThreadCommandBuffer();
 
-	cmdbuf[0] = IPC_MakeHeader(0x80A,0,0); // 0x80A0000
+    cmdbuf[0] = IPC_MakeHeader(0x80A,0,0); // 0x80A0000
 
-	if(R_FAILED(ret = svcSendSyncRequest(ptmSysmHandle)))return ret;
+    if(R_FAILED(ret = svcSendSyncRequest(ptmSysmHandle)))return ret;
 
-	return (Result)cmdbuf[1];
+    return (Result)cmdbuf[1];
 }
 
-Result AM_DeleteAllTemporaryPrograms(void)
+Result PTMSYSM_GetPlayHistory(u32* read, u32 offset, u32 count, ENTRY_HISTORY* out)
 {
-	Result ret;
-	u32 *cmdbuf = getThreadCommandBuffer();
+    Result ret;
+    u32 *cmdbuf = getThreadCommandBuffer();
+    u32 size = count*sizeof(ENTRY_HISTORY);
 
-	cmdbuf[0] = IPC_MakeHeader(0x16,0,0); // 0x160000
+    cmdbuf[0] = IPC_MakeHeader(0x807,2,2); // 0x8070082
+    cmdbuf[1] = offset;
+    cmdbuf[2] = count;
+    cmdbuf[3] = IPC_Desc_Buffer(size, IPC_BUFFER_W);
+    cmdbuf[4] = (u32)out;
 
-	if(R_FAILED(ret = svcSendSyncRequest(amHandle)))return ret;
+    if(R_FAILED(ret = svcSendSyncRequest(ptmSysmHandle)))return ret;
 
-	return (Result)cmdbuf[1];
-}
-
-Result AM_DeleteAllExpiredUserPrograms(void)
-{
-	Result ret;
-	u32 *cmdbuf = getThreadCommandBuffer();
-
-	cmdbuf[0] = IPC_MakeHeader(0x1F,1,0); // 0x1F0040
-
-	if(R_FAILED(ret = svcSendSyncRequest(amHandle)))return ret;
-
-	return (Result)cmdbuf[1];
+    if (read) *read = cmdbuf[2];
+    return (Result)cmdbuf[1];
 }
 
 void gfxEndFrame() {
