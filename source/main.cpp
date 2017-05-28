@@ -1330,7 +1330,7 @@ void toggleNSMenu() {
     bool isTestMenu = !memcmp(titleID, testmenuID, 0x8);
 
     if (isTestMenu) CFG_SetConfigInfoBlk8(0x8, 0x00110001, homemenuID);
-    else CFG_SetConfigInfoBlk8(0x8, 0x00110001, testmenuID);
+    else if (AM_GetTitleProductCode(MEDIATYPE_NAND, 0x0004003000008102LL, NULL)==0) CFG_SetConfigInfoBlk8(0x8, 0x00110001, testmenuID);
     CFG_UpdateConfigNANDSavegame();
 
     printf("Switched to %s.\n", isTestMenu ? "HOME Menu" : "Test Menu");
