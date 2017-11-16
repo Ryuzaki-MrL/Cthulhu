@@ -37,6 +37,7 @@ INCLUDES	    :=	include
 APP_TITLE       :=  Cthulhu
 APP_DESCRIPTION :=  Cache Tool
 APP_AUTHOR      :=  Ryuzaki_MrL
+APP_ICON        :=  $(TOPDIR)/meta/icon.png
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -108,19 +109,6 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 			-I$(CURDIR)/$(BUILD)
 
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
-
-ifeq ($(strip $(ICON)),)
-	icons := $(wildcard *.png)
-	ifneq (,$(findstring $(TARGET).png,$(icons)))
-		export APP_ICON := $(TOPDIR)/$(TARGET).png
-	else
-		ifneq (,$(findstring icon.png,$(icons)))
-			export APP_ICON := $(TOPDIR)/icon.png
-		endif
-	endif
-else
-	export APP_ICON := $(TOPDIR)/$(ICON)
-endif
 
 ifeq ($(strip $(NO_SMDH)),)
 	export _3DSXFLAGS += --smdh=$(CURDIR)/$(TARGET).smdh
