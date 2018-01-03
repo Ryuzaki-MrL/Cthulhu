@@ -1,10 +1,9 @@
-# Cthulhu (CacheTool)
+# Cthulhu
 
 Cthulhu is a homebrew application for managing play time history, step history and cached icon data.
 The goal of this app is to provide an open-source alternative to some of the [3DS Development Unit Software](https://www.3dbrew.org/wiki/3DS_Development_Unit_Software), alongside with extra features.
 
-Why "Cthulhu"?
-I found the pronunciation similar to "Cache Tool". It's also a cool name.
+### I'm currently unable to continue this due to not having a hacked 3DS. I'll continue development whenever I can.
 
 Current Features:
 - Clear play time history: clears your play time history (it can be seen at Activity Log under "Daily Records").
