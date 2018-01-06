@@ -17,11 +17,13 @@
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 3
-#define VERSION_MICRO 2
+#define VERSION_MICRO 3
 
 bool dobackup = true;
 
 Handle ptmSysmHandle;
+
+#pragma pack(1)
 
 typedef struct {
     u16 shortDescription[0x40];
@@ -69,7 +71,7 @@ typedef struct {
 } SMDH_TWL;
 
 typedef struct {
-    u32 unknown[2];
+    u64 unknown;
     u64 titleid;
 } ENTRY_DATA;
 
@@ -200,19 +202,18 @@ u32 waitKey() {
 
 bool promptConfirm(const char* title, const char* message) {
     consoleClear();
-    printf("\x1b[0;0H\x1b[30;47m%-50s", " ");
-    printf("\x1b[0;%uH%s\x1b[0;0m", (25 - (strlen(title) >> 1)), title);
+    printf("\x1b[1;0H\x1b[30;47m%-50s", " ");
+    printf("\x1b[1;%uH%s\x1b[0;0m", (25 - (strlen(title) >> 1)), title);
     printf("\x1b[14;%uH%s", (25 - (strlen(message) >> 1)), message);
     printf("\x1b[16;14H\x1b[32m(A)\x1b[37m Confirm / \x1b[31m(B)\x1b[37m Cancel");
     u32 kDown = waitKey();
-    if (kDown & KEY_A) return true;
-    return false;
+    return (kDown & KEY_A);
 }
 
 void promptError(const char* title, const char* message) {
     consoleClear();
-    printf("\x1b[0;0H\x1b[30;47m%-50s", " ");
-    printf("\x1b[0;%uH%s\x1b[0;0m", (25 - (strlen(title) >> 1)), title);
+    printf("\x1b[1;0H\x1b[30;47m%-50s", " ");
+    printf("\x1b[1;%uH%s\x1b[0;0m", (25 - (strlen(title) >> 1)), title);
     printf("\x1b[14;%uH%s", (25 - (strlen(message) >> 1)), message);
     waitKey();
 }
@@ -251,13 +252,9 @@ ENTRY_DATA* getSharedEntryList(Handle* source) {
 
     ENTRY_DATA* data = new ENTRY_DATA[ENTRY_SHARED_COUNT];
 
-    for (u64 i = 0; i < ENTRY_SHARED_COUNT; i++) {
-        u32 rsize = 0;
-        res = FSFILE_Read(*source, &rsize, i*sizeof(ENTRY_DATA), &data[i], sizeof(ENTRY_DATA));
-        printf("\x1b[15;0HReading entry data %llu... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
-        if(R_FAILED(res) || rsize < sizeof(ENTRY_DATA)) break;
-        gfxEndFrame();
-    }
+    u32 rsize = 0;
+    res = FSFILE_Read(*source, &rsize, 0, data, ENTRY_SHARED_COUNT * sizeof(ENTRY_DATA));
+    printf("\x1b[15;0HReading entry list... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     return data;
 }
@@ -271,13 +268,9 @@ SMDH_SHARED* getSharedIconList(Handle* source) {
 
     SMDH_SHARED* data = new SMDH_SHARED[ENTRY_SHARED_COUNT];
 
-    for (u64 i = 0; i < ENTRY_SHARED_COUNT; i++) {
-        u32 rsize = 0;
-        res = FSFILE_Read(*source, &rsize, i*sizeof(SMDH_SHARED), &data[i], sizeof(SMDH_SHARED));
-        printf("\x1b[16;0HReading icon data %llu... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
-        if(R_FAILED(res) || rsize < sizeof(SMDH_SHARED)) break;
-        gfxEndFrame();
-    }
+    u32 rsize = 0;
+    res = FSFILE_Read(*source, &rsize, 0, data, ENTRY_SHARED_COUNT * sizeof(SMDH_SHARED));
+    printf("\x1b[15;0HReading icon list... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     return data;
 }
@@ -374,13 +367,9 @@ ENTRY_LIBRARY* getActivityEntryList(Handle* source) {
 
     ENTRY_LIBRARY* data = new ENTRY_LIBRARY[ENTRY_LIBRARY_COUNT];
 
-    for (u64 i = 0; i < ENTRY_LIBRARY_COUNT; i++) {
-        u32 rsize = 0;
-        res = FSFILE_Read(*source, &rsize, ENTRY_LIBRARY_START + i*sizeof(ENTRY_LIBRARY), &data[i], sizeof(ENTRY_LIBRARY));
-        printf("\x1b[15;0HReading entry data %llu... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
-        if(R_FAILED(res) || rsize < sizeof(ENTRY_LIBRARY)) break;
-        gfxEndFrame();
-    }
+    u32 rsize = 0;
+    res = FSFILE_Read(*source, &rsize, ENTRY_LIBRARY_START, data, ENTRY_LIBRARY_COUNT * sizeof(ENTRY_LIBRARY));
+    printf("\x1b[15;0HReading savefile... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
     return data;
 }
@@ -480,9 +469,9 @@ void editLibraryEntry(ENTRY_LIBRARY* library, u16 selected) {
             switch(task) {
                 case 0: {
                     if (option < 3) {
-                        printf("\x1b[%u;0H ", ++option);
+                        printf("\x1b[%u;0H ", 2+(option++));
                     } else {
-                        printf("\x1b[%u;0H ", option+1);
+                        printf("\x1b[%u;0H ", option+2);
                         option = 0;
                     }
                 } break;
@@ -543,9 +532,9 @@ void editLibraryEntry(ENTRY_LIBRARY* library, u16 selected) {
             switch(task) {
                 case 0: {
                     if (option > 0) {
-                        printf("\x1b[%u;0H ", 1+(option--));
+                        printf("\x1b[%u;0H ", 2+(option--));
                     } else {
-                        printf("\x1b[%u;0H ", option+1);
+                        printf("\x1b[%u;0H ", option+2);
                         option = 3;
                     }
                 } break;
@@ -617,14 +606,14 @@ void editLibraryEntry(ENTRY_LIBRARY* library, u16 selected) {
         }
 
         if (update || kDown) {
-            printf("\x1b[0;0H%#018llx", library[selected].titleid);
-            printf("\x1b[1;2H\x1b[0mTimes Played: \x1b[%sm%05u", (task==1) ? "30;47" : "0", library[selected].timesPlayed);
-            printf("\x1b[2;2H\x1b[0mTotal Play Time: \x1b[%sm%04lu\x1b[0m:\x1b[%sm%02lu\x1b[0m:\x1b[%sm%02lu", (task==3) ? "30;47" : "0", library[selected].totalPlayed / 3600, (task==4) ? "30;47" : "0", (library[selected].totalPlayed / 60) % 60, (task==5) ? "30;47" : "0", library[selected].totalPlayed % 60);
-            printf("\x1b[3;2H\x1b[0mFirst Played: \x1b[%sm%02u\x1b[0m/\x1b[%sm%02u\x1b[0m/\x1b[%sm%04u", (task==6) ? "30;47" : "0", firstPlayed.month, (task==7) ? "30;47" : "0", firstPlayed.day, (task==8) ? "30;47" : "0", firstPlayed.year);
-            printf("\x1b[4;2H\x1b[0mLast Played: \x1b[%sm%02u\x1b[0m/\x1b[%sm%02u\x1b[0m/\x1b[%sm%04u", (task==9) ? "30;47" : "0", lastPlayed.month, (task==10) ? "30;47" : "0", lastPlayed.day, (task==11) ? "30;47" : "0", lastPlayed.year);
+            printf("\x1b[1;0H%#018llx", library[selected].titleid);
+            printf("\x1b[2;2H\x1b[0mTimes Played: \x1b[%sm%05u", (task==1) ? "30;47" : "0", library[selected].timesPlayed);
+            printf("\x1b[3;2H\x1b[0mTotal Play Time: \x1b[%sm%04lu\x1b[0m:\x1b[%sm%02lu\x1b[0m:\x1b[%sm%02lu", (task==3) ? "30;47" : "0", library[selected].totalPlayed / 3600, (task==4) ? "30;47" : "0", (library[selected].totalPlayed / 60) % 60, (task==5) ? "30;47" : "0", library[selected].totalPlayed % 60);
+            printf("\x1b[4;2H\x1b[0mFirst Played: \x1b[%sm%02u\x1b[0m/\x1b[%sm%02u\x1b[0m/\x1b[%sm%04u", (task==6) ? "30;47" : "0", firstPlayed.month, (task==7) ? "30;47" : "0", firstPlayed.day, (task==8) ? "30;47" : "0", firstPlayed.year);
+            printf("\x1b[5;2H\x1b[0mLast Played: \x1b[%sm%02u\x1b[0m/\x1b[%sm%02u\x1b[0m/\x1b[%sm%04u", (task==9) ? "30;47" : "0", lastPlayed.month, (task==10) ? "30;47" : "0", lastPlayed.day, (task==11) ? "30;47" : "0", lastPlayed.year);
             u32 average = library[selected].totalPlayed / library[selected].timesPlayed;
-            printf("\x1b[6;2H\x1b[0mAverage Play Time: %04lu:%02lu:%02lu", average / 3600, (average / 60) % 60, average % 60);
-            printf("\x1b[%u;0H>", 1 + option);
+            printf("\x1b[7;2H\x1b[0mAverage Play Time: %04lu:%02lu:%02lu", average / 3600, (average / 60) % 60, average % 60);
+            printf("\x1b[%u;0H>", 2 + option);
             update = false;
         }
 
@@ -688,7 +677,7 @@ void editSoftwareLibrary() {
 
         if (update || kDown) {
             consoleClear();
-            printf("\x1b[0;0HSOFTWARE LIBRARY:");
+            printf("\x1b[1;0HSOFTWARE LIBRARY:");
             u32 i = 0;
             while (i < ENTRY_LIBRARY_COUNT) {
                 if (i > 28) break;
@@ -698,12 +687,15 @@ void editSoftwareLibrary() {
                     case 0x0004: case 0x0008: printf("\x1b[33m"); break; // Set color to yellow if pending
                     default: printf("\x1b[0m"); break;                   // Set color to white if unknown
                 }
-                char title[32];
-                utf2ascii(title, icons[std::distance(tids, std::find(tids, tids + ENTRY_SHARED_COUNT, library[i+scroll].titleid))].titles[1].shortDescription);
-                printf("\x1b[%lu;0H  %.22s\x1b[%lu;25H%#018llx", 1 + i, title, 1 + i, library[i+scroll].titleid);
+                char title[40];
+                auto it = std::find(tids, tids + ENTRY_SHARED_COUNT, library[i+scroll].titleid);
+                if (it != tids + ENTRY_SHARED_COUNT) {
+                    utf2ascii(title, icons[std::distance(tids, it)].titles[1].shortDescription);
+                    printf("\x1b[%lu;0H  %.22s\x1b[%lu;25H%#018llx", 2 + i, title, 2 + i, library[i+scroll].titleid);
+                }
                 i++;
             }
-            printf("\x1b[%u;0H\x1b[0m>", 1 + selected);
+            printf("\x1b[%u;0H\x1b[0m>", 2 + selected);
             update = false;
         }
 
@@ -711,13 +703,9 @@ void editSoftwareLibrary() {
     }
 
     if (promptConfirm("Edit Software Library", "Save changes?")) {
-        for (u64 i = 0; i < ENTRY_LIBRARY_COUNT; i++) {
-            u32 wsize = 0;
-            res = FSFILE_Write(pld, &wsize, ENTRY_LIBRARY_START + i*sizeof(ENTRY_LIBRARY), &library[i], sizeof(ENTRY_LIBRARY), 0);
-            printf("\x1b[15;0HWriting entry data %llu to file... %s %#lx.\n", i+1, R_FAILED(res) ? "ERROR" : "OK", res);
-            if(R_FAILED(res) || wsize < sizeof(ENTRY_LIBRARY)) break;
-            gfxEndFrame();
-        }
+        u32 wsize = 0;
+        res = FSFILE_Write(pld, &wsize, ENTRY_LIBRARY_START, library, ENTRY_LIBRARY_COUNT * sizeof(ENTRY_LIBRARY), 0);
+        printf("\x1b[15;0HWriting data to savefile... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
     }
 
     delete[] library;
@@ -1113,7 +1101,9 @@ void unpackRepackHomemenuSoftware(bool repack) {
         memset(flags, repack, ENTRY_HOMEMENU_COUNT);
         res = FSFILE_Write(save, &wsize, 0xB48, flags, ENTRY_HOMEMENU_COUNT, 0);
         if (R_FAILED(res) || wsize < ENTRY_HOMEMENU_COUNT) promptError(title, "Failed to write icon status flags.");
-    } else promptError(title, "Failed to read HOME Menu savedata.");
+    } else {
+        promptError(title, "Failed to read HOME Menu savedata.");
+    }
 
     free(flags);
 
@@ -1284,7 +1274,7 @@ void changeAcceptedEULAVersion() {
     consoleClear();
 
     while(aptMainLoop()) {
-        printf("\x1b[0;0HPress LEFT, RIGHT or SELECT to select byte.\n");
+        printf("\x1b[1;0HPress LEFT, RIGHT or SELECT to select byte.\n");
         printf("Press UP or DOWN to modify selected byte.\n");
         printf("Press X for 0x0000 and Y for 0xFFFF.\n");
         printf("Press A or B to save and return.\n\n");
@@ -1297,14 +1287,14 @@ void changeAcceptedEULAVersion() {
         if (kDown & KEY_UP) eulaData[index]--;
         if (kDown & KEY_DOWN) eulaData[index]++;
 
-        if (kDown & KEY_Y) *((u16*)eulaData) = 0xFFFF;
-        if (kDown & KEY_X) *((u16*)eulaData) = 0x0000;
+        if (kDown & KEY_Y) eulaData[0] = eulaData[1] = 0xFF;
+        if (kDown & KEY_X) eulaData[0] = eulaData[1] = 0x00;
 
         if ((kDown & KEY_A || kDown & KEY_B) && promptConfirm("Change Accepted EULA Version", "Exit now?")) {
             if (promptConfirm("Change Accepted EULA Version", "Save Changes?")) {
                 res = CFG_SetConfigInfoBlk8(4, 0xD0000, eulaData);
                 printf("Setting new EULA version... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
-                res = CFG_UpdateConfigNANDSavegame();
+                res = CFG_UpdateConfigSavegame();
                 printf("Updating Config savegame... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
             } break;
         }
@@ -1328,39 +1318,36 @@ void toggleNSMenu() {
 
     CFG_GetConfigInfoBlk4(0x8, 0x00110001, titleID);
     bool isTestMenu = !memcmp(titleID, testmenuID, 0x8);
+    const char* newMenu = isTestMenu ? "HOME Menu" : "Test Menu";
+    char msg[100];
+    sprintf(msg, "Switch current menu to %s?", newMenu);
 
-    if (isTestMenu) CFG_SetConfigInfoBlk8(0x8, 0x00110001, homemenuID);
-    else if (AM_GetTitleProductCode(MEDIATYPE_NAND, 0x0004003000008102LL, NULL)==0) CFG_SetConfigInfoBlk8(0x8, 0x00110001, testmenuID);
-    CFG_UpdateConfigNANDSavegame();
+    if (!promptConfirm("Toggle NS Menu", msg)) return;
 
-    printf("Switched to %s.\n", isTestMenu ? "HOME Menu" : "Test Menu");
+    if (isTestMenu) {
+        CFG_SetConfigInfoBlk8(0x8, 0x00110001, homemenuID);
+    } else if (AM_GetTitleProductCode(MEDIATYPE_NAND, 0x0004003000008102LL, NULL)==0) {
+        CFG_SetConfigInfoBlk8(0x8, 0x00110001, testmenuID);
+    }
+    CFG_UpdateConfigSavegame();
+
+    printf("Switched to %s.\n", newMenu);
     printf("Press START to reboot.\nAny other key to continue.\n");
     if (waitKey() & KEY_START) APT_HardwareResetAsync();
-}
-
-void moveDataFolder() {
-    rename("/3ds/cachetool/idb.bak", "/3ds/data/cthulhu/idb.bak");
-    rename("/3ds/cachetool/idbt.bak", "/3ds/data/cthulhu/idbt.bak");
-    rename("/3ds/cachetool/Cache.bak", "/3ds/data/cthulhu/Cache.bak");
-    rename("/3ds/cachetool/CacheD.bak", "/3ds/data/cthulhu/CacheD.bak");
-    rename("/3ds/cachetool/boss_bgm.aac", "/3ds/data/cthulhu/boss_bgm.aac");
-    rename("/3ds/cachetool/boss_xml.xml", "/3ds/data/cthulhu/boss_xml.xml");
-    rmdir("/3ds/cachetool");
 }
 
 int main() {
     gfxInitDefault();
     consoleInit(GFX_TOP, NULL);
-    if (R_FAILED(srvGetServiceHandle(&ptmSysmHandle, "ptm:sysm"))) promptError("SysMenu PTM Service", "Failed to get ptm:sysm service handle.");
-    // if (R_FAILED(srvGetServiceHandle(&amHandle, "am:net"))) promptError("Application Manager Service", "Failed to get am:net service handle.");
+    if (R_FAILED(srvGetServiceHandle(&ptmSysmHandle, "ptm:sysm"))) {
+        promptError("SysMenu PTM Service", "Failed to get ptm:sysm service handle.");
+    }
     amInit();
     cfguInit();
     fsInit();
 
-    mkdir("/3ds/data", 0777);
-    mkdir("/3ds/data/cthulhu", 0777);
-    char oldpath[] = "/3ds/cachetool";
-    if (pathExists(oldpath)) moveDataFolder();
+    mkdir("/3ds", 0777);
+    mkdir("/3ds/Cthulhu", 0777);
 
     u8 menucount[SUBMENU_COUNT] = {6, 4, 3, 4, 4, 5, 5};
     const char* menuentries[SUBMENU_COUNT][MAX_OPTIONS_PER_SUBMENU] = 
@@ -1417,33 +1404,37 @@ int main() {
     u8 submenu = 0;
 
     while (aptMainLoop()) {
-        printf("\x1b[0;0H\x1b[30;47m%-50s", " ");
-        printf("\x1b[0;18HCthulhu v%01u.%01u.%01u\x1b[0;0m", VERSION_MAJOR, VERSION_MINOR, VERSION_MICRO);
+        printf("\x1b[1;0H\x1b[30;47m%-50s", " ");
+        printf("\x1b[1;18HCthulhu v%01u.%01u.%01u\x1b[0;0m", VERSION_MAJOR, VERSION_MINOR, VERSION_MICRO);
 
-        for (u8 i = 0; i<=menucount[submenu]; i++) {
-            if (i < menucount[submenu]) printf("\x1b[%u;2H%-48s", i+1, menuentries[submenu][i]);
-            else if (submenu > 0) printf("\x1b[%u;2H%-48s", i+1, "Go back.");
-        } printf("\x1b[%u;0H>", option[submenu] + 1);
+        for (u8 i = 0; i <= menucount[submenu]; i++) {
+            if (i < menucount[submenu]) {
+                printf("\x1b[%u;2H%-48s", i+2, menuentries[submenu][i]);
+            } else if (submenu > 0) {
+                printf("\x1b[%u;2H%-48s", i+2, "Go back.");
+            }
+        }
 
-        printf("\x1b[27;0HPress START to reboot the 3DS.");
-        printf("\x1b[28;0HPress SELECT to toggle auto backup.");
-        printf("\x1b[29;0HAuto backup of icon cache: %s", dobackup ? "ON " : "OFF");
+        printf("\x1b[%u;0H>", option[submenu]+2);
+        printf("\x1b[28;0HPress START to reboot the 3DS.");
+        printf("\x1b[29;0HPress SELECT to toggle auto backup.");
+        printf("\x1b[30;0HAuto backup of icon cache: %s", dobackup ? "ON " : "OFF");
 
         hidScanInput();
         u32 kDown = hidKeysDown();
 
         if (kDown & KEY_DOWN) {
             if (option[submenu] < menucount[submenu]-(submenu==0)) {
-                printf("\x1b[%u;0H ", ++option[submenu]);
+                printf("\x1b[%u;0H ", 2+(option[submenu]++));
             } else {
-                printf("\x1b[%u;0H ", option[submenu]+1);
+                printf("\x1b[%u;0H ", option[submenu]+2);
                 option[submenu] = 0;
             }
         } else if (kDown & KEY_UP) {
             if (option[submenu] > 0) {
-                printf("\x1b[%u;0H ", 1+(option[submenu]--));
+                printf("\x1b[%u;0H ", 2+(option[submenu]--));
             } else {
-                printf("\x1b[%u;0H ", option[submenu]+1);
+                printf("\x1b[%u;0H ", option[submenu]+2);
                 option[submenu] = menucount[submenu]-(submenu==0);
             }
         }
@@ -1453,12 +1444,12 @@ int main() {
                 submenu = option[0]+1;
                 consoleClear();
             } else switch(submenu*MAX_OPTIONS_PER_SUBMENU + option[submenu]) {
-                case 10: if (promptConfirm("Clear Play History", "This can't be undone without a backup. Are you sure?")) clearPlayHistory(); break;
-                case 11: if (promptConfirm("Clear Step History", "This can't be undone without a backup. Are you sure?")) clearStepHistory(); break;
-                case 12: if (promptConfirm("Clear Software Library", "This can't be undone without a backup. Are you sure?")) clearSoftwareLibrary(); break;
+                case 10: if (promptConfirm("Clear Play History", "This can't be undone w/o a backup. Are you sure?")) clearPlayHistory(); break;
+                case 11: if (promptConfirm("Clear Step History", "This can't be undone w/o a backup. Are you sure?")) clearStepHistory(); break;
+                case 12: if (promptConfirm("Clear Software Library", "This can't be undone w/o a backup. Are you sure?")) clearSoftwareLibrary(); break;
                 case 13: consoleClear(); editSoftwareLibrary(); break;
 
-                case 30: if (promptConfirm("Clear Shared Icon Cache", "This will also clear your software library. Are you sure?")) clearSharedIconCache(); break;
+                case 30: if (promptConfirm("Clear Shared Icon Cache", "This also clears your software library. Are you sure?")) clearSharedIconCache(); break;
                 case 31: if (promptConfirm("Update Shared Icon Cache", "Update shared cached icon data?")) updateSharedIconCache(); break;
                 case 32: if (promptConfirm("Backup Shared Icon Cache", "Backup shared cached icon data?")) backupSharedIconCache(); break;
                 case 33: if (promptConfirm("Restore Shared Icon Cache", "Restore cached icon data from backup?")) restoreSharedIconCache(); break;
@@ -1502,7 +1493,6 @@ int main() {
     cfguExit();
     amExit();
     svcCloseHandle(ptmSysmHandle);
-    // svcCloseHandle(amHandle);
     gfxExit();
 
     return 0;
