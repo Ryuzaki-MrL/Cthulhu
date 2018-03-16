@@ -17,7 +17,9 @@
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 3
-#define VERSION_MICRO 3
+#define VERSION_MICRO 4
+
+#define WORKDIR "/3ds/Cthulhu"
 
 bool dobackup = true;
 
@@ -768,8 +770,8 @@ bool backupSharedIconCache(bool wait = true) {
     res = FSUSER_OpenFile(&idbt, shared, (FS_Path)fsMakePath(PATH_ASCII, "/idbt.dat"), FS_OPEN_READ, 0);
     printf("Opening file \"idbt.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
-    FILE* backup1 = fopen("/3ds/data/cthulhu/idb.bak", "wb");
-    FILE* backup2 = fopen("/3ds/data/cthulhu/idbt.bak", "wb");
+    FILE* backup1 = fopen(WORKDIR"/idb.bak", "wb");
+    FILE* backup2 = fopen(WORKDIR"/idbt.bak", "wb");
     printf("Backing up icon data... ");
     gfxEndFrame();
 
@@ -862,8 +864,8 @@ void restoreSharedIconCache() {
     u32 sharedID = 0xF000000B;
     FS_Archive shared = openExtdata(&sharedID, ARCHIVE_SHARED_EXTDATA);
 
-    FILE* backup1 = fopen("/3ds/data/cthulhu/idb.bak", "wb");
-    FILE* backup2 = fopen("/3ds/data/cthulhu/idbt.bak", "wb");
+    FILE* backup1 = fopen(WORKDIR"/idb.bak", "wb");
+    FILE* backup2 = fopen(WORKDIR"/idbt.bak", "wb");
 
     if (backup1==NULL || backup2==NULL) {
         promptError("Restore Shared Icon Cache", "No usable backup found.");
@@ -942,8 +944,8 @@ bool backupHomemenuIconCache(bool wait = true) {
     res = FSUSER_OpenFile(&cached, hmextdata, (FS_Path)fsMakePath(PATH_ASCII, "/CacheD.dat"), FS_OPEN_READ, 0);
     printf("Opening file \"CacheD.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
 
-    FILE* backup1 = fopen("/3ds/data/cthulhu/CacheD.bak", "wb");
-    FILE* backup2 = fopen("/3ds/data/cthulhu/Cache.bak", "wb");
+    FILE* backup1 = fopen(WORKDIR"/CacheD.bak", "wb");
+    FILE* backup2 = fopen(WORKDIR"/Cache.bak", "wb");
     printf("Backing up icon data... ");
     gfxEndFrame();
 
@@ -1034,8 +1036,8 @@ void restoreHomemenuIconCache() {
     u32 homemenuID[] = {0x00000082, 0x0000008f, 0x00000098, 0x00000098, 0x000000a1, 0x000000a9, 0x000000b1};
     FS_Archive hmextdata = openExtdata(homemenuID, ARCHIVE_EXTDATA);
 
-    FILE* backup1 = fopen("/3ds/data/cthulhu/CacheD.bak", "rb");
-    FILE* backup2 = fopen("/3ds/data/cthulhu/Cache.bak", "rb");
+    FILE* backup1 = fopen(WORKDIR"/CacheD.bak", "rb");
+    FILE* backup2 = fopen(WORKDIR"/Cache.bak", "rb");
 
     if (backup1==NULL || backup2==NULL) {
         promptError("Restore HOME Menu Icon Cache", "No usable backup found.");
@@ -1199,8 +1201,8 @@ void replaceEShopBGM() {
     u32 eshopID[] = {0x00000209, 0x00000219, 0x00000229, 0x00000229, 0x00000269, 0x00000279, 0x00000289};
     FS_Archive eshopext = openExtdata(eshopID, ARCHIVE_EXTDATA);
 
-    FILE* newbgm = fopen("/3ds/data/cthulhu/boss_bgm.aac", "rb"); // getOpenFilename("/3ds/data/cthulhu");
-    FILE* newxml = fopen("/3ds/data/cthulhu/boss_xml.xml", "rb");
+    FILE* newbgm = fopen(WORKDIR"/boss_bgm.aac", "rb"); // getOpenFilename("/3ds/data/cthulhu");
+    FILE* newxml = fopen(WORKDIR"/boss_xml.xml", "rb");
 
     if (newbgm==NULL || newxml==NULL) {
         promptError("Replace eShop BGM", "Source file not found.");
