@@ -17,7 +17,7 @@
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 3
-#define VERSION_MICRO 4
+#define VERSION_MICRO 5
 
 #define WORKDIR "/3ds/Cthulhu"
 
@@ -1338,6 +1338,27 @@ void toggleNSMenu() {
     if (waitKey() & KEY_START) APT_HardwareResetAsync();
 }
 
+void setAllPlayCoins() {
+    Handle gamecoin;
+    u32 sharedID = 0xF000000B;
+    FS_Archive shared = openExtdata(&sharedID, ARCHIVE_SHARED_EXTDATA);
+
+    Result res = FSUSER_OpenFile(&gamecoin, shared, (FS_Path)fsMakePath(PATH_ASCII, "/gamecoin.dat"), FS_OPEN_READ | FS_OPEN_WRITE, 0);
+    if (R_FAILED(res)) {
+        promptError("Maximize Play Coin Count", "Failed to open gamecoin.dat file.");
+        return;
+    }
+    printf("Opening file \"gamecoin.dat\"... %s %#lx.\n", R_FAILED(res) ? "ERROR" : "OK", res);
+
+    u16 coins = 300;
+    res = FSFILE_Write(gamecoin, NULL, 0x4, &coins, sizeof(u16), 0);
+    FSFILE_Close(gamecoin);
+    FSUSER_CloseArchive(shared);
+
+    printf("Press any key to continue.\n");
+    waitKey();
+}
+
 int main() {
     gfxInitDefault();
     consoleInit(GFX_TOP, NULL);
@@ -1351,22 +1372,22 @@ int main() {
     mkdir("/3ds", 0777);
     mkdir("/3ds/Cthulhu", 0777);
 
-    u8 menucount[SUBMENU_COUNT] = {6, 4, 3, 4, 4, 5, 5};
+    u8 menucount[SUBMENU_COUNT] = {6, 4, 3, 4, 4, 5, 6};
     const char* menuentries[SUBMENU_COUNT][MAX_OPTIONS_PER_SUBMENU] = 
     {
         {
-            "Activity Log management.",
-            "Friends List management.",
-            "Shared icon cache management.",
-            "HOME Menu icon cache management.",
-            "HOME Menu software management.",
-            "Miscellaneous."
+            "Activity Log management",
+            "Friends List management",
+            "Shared icon cache management",
+            "HOME Menu icon cache management",
+            "HOME Menu software management",
+            "Miscellaneous"
         },
         {
-            "Clear play history.",
-            "Clear step history.",
-            "Clear software library.",
-            "Edit software library."
+            "Clear play history",
+            "Clear step history",
+            "Clear software library",
+            "Edit software library"
         },
         {
             "[COMING SOON]", // "Clear Friends List.",
@@ -1374,31 +1395,32 @@ int main() {
             "[COMING SOON]" // "Restore Friends List."
         },
         {
-            "Clear shared icon cache.",
-            "Update shared icon cache.",
-            "Backup shared icon cache.",
-            "Restore shared icon cache."
+            "Clear shared icon cache",
+            "Update shared icon cache",
+            "Backup shared icon cache",
+            "Restore shared icon cache"
         },
         {
-            "Clear HOME Menu icon cache.",
-            "Update HOME Menu icon cache.",
-            "Backup HOME Menu icon cache.",
-            "Restore HOME Menu icon cache."
+            "Clear HOME Menu icon cache",
+            "Update HOME Menu icon cache",
+            "Backup HOME Menu icon cache",
+            "Restore HOME Menu icon cache"
         },
         {
-            "Reset demo play count.",
-            "Reset folder count.",
-            "Unwrap all HOME Menu software.",
-            "Repack all HOME Menu software.",
-            "Remove software update nag."
-            // "Remove system update nag."
+            "Reset demo play count",
+            "Reset folder count",
+            "Unwrap all HOME Menu software",
+            "Repack all HOME Menu software",
+            "Remove software update nag"
+            // "Remove system update nag"
         },
         {
-            "Clear Game Notes.",
-            "Reset eShop BGM.",
-            "Replace eShop BGM.",
-            "Change accepted EULA version.",
-            "Toggle HOME/Test Menu"
+            "Clear Game Notes",
+            "Reset eShop BGM",
+            "Replace eShop BGM",
+            "Change accepted EULA version",
+            "Toggle HOME/Test Menu",
+            "Maximize Play Coin Count"
         }
     };
 
@@ -1473,6 +1495,7 @@ int main() {
                 case 62: if (promptConfirm("Replace eShop BGM", "Replace the current Nintendo eShop music?")) replaceEShopBGM(); break;
                 case 63: consoleClear(); changeAcceptedEULAVersion(); break;
                 case 64: consoleClear(); toggleNSMenu(); break;
+                case 65: consoleClear(); setAllPlayCoins(); break;
 
                 default: consoleClear(); submenu = 0; break;
             }
